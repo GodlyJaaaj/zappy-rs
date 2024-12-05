@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 readme = "README.md"
 repository = "https://github.com/GodlyJaaaj/zappy-rs"
-rust-version = "1.83.0"
+rust-version = "1.82.0"
 keywords = ["zappy", "zappy-rs", "multithreaded", "blazing-fast", "epitech"]
 default-run = "zappy-rs"
 
