@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Vec2<T> {
     x: T,
     y: T,
@@ -19,3 +19,8 @@ impl Vec2<u64> {
     }
 }
 
+impl From<(u64, u64)> for Vec2<u64> {
+    fn from((x, y): (u64, u64)) -> Self {
+        Vec2 { x, y }
+    }
+}

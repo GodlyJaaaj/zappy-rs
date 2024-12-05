@@ -1,6 +1,7 @@
 use crate::resources::Resources;
 use crate::vec2::Position;
 
+#[derive(Clone, Debug)]
 pub struct Player {
     id: u128,
     inventory: Resources,
