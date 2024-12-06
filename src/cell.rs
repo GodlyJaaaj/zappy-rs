@@ -1,13 +1,13 @@
-use std::fmt;
 use crate::egg::Egg;
 use crate::player::Player;
 use crate::resources::Resources;
+use std::fmt;
 
 #[derive(Clone)]
 pub struct Cell {
     resources: Resources,
-    players: Vec<Box<Player>>,
-    eggs: Vec<Egg>
+    players: Vec<Player>,
+    eggs: Vec<Egg>,
 }
 
 impl Cell {
@@ -15,7 +15,7 @@ impl Cell {
         Cell {
             resources: Resources::default(),
             players: Vec::new(),
-            eggs: Vec::new()
+            eggs: Vec::new(),
         }
     }
 }
