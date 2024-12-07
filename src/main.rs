@@ -8,19 +8,10 @@ mod resources;
 mod server;
 mod vec2;
 
-use crate::map::Map;
 use crate::server::{Server, ServerConfig};
-use crate::vec2::Size;
-use mio::Token;
 use std::error::Error;
-use std::io::Read;
-
-const SERVER: Token = Token(0);
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let map = Map::new(Size::from((5, 5)));
-    println!("{}", map);
-    //WIP
     let server_config = ServerConfig::new(
         "127.0.0.1".to_string(),
         4242,
@@ -30,6 +21,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         4,
         1,
     );
-    //let mut server = Server::new(server_config);
+    let mut server = Server::from_config(server_config).unwrap();
+    if let Err(e) = server.try_make_readable() {
+        return Err(Box::new(e));
+    }
     Ok(())
 }

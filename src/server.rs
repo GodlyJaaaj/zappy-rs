@@ -1,4 +1,8 @@
+use crate::client::Client;
 use mio::{net::TcpListener, Events, Poll, Token};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+
 const SERVER: Token = Token(0);
 
 pub struct ServerConfig {
@@ -38,23 +42,39 @@ pub struct Server {
     poll: Poll,
     events: Events,
     tcp_listener: TcpListener,
+    clients: Vec<Client>,
     //freq: u16,
     //teams
 }
 
+#[derive(Debug)]
 pub enum ServerError {
-    PollError,
+    PollError(std::io::Error),
     FailedToParseAddr,
     FailedToBind,
     FailedToMakeReadable,
     FailedToMakeUnreadable,
 }
 
+impl Display for ServerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerError::PollError(e) => write!(f, "Failed to create poll: {}", e),
+            ServerError::FailedToParseAddr => write!(f, "Failed to parse address"),
+            ServerError::FailedToBind => write!(f, "Failed to bind address"),
+            ServerError::FailedToMakeReadable => write!(f, "Failed to make server readable"),
+            ServerError::FailedToMakeUnreadable => write!(f, "Failed to make server unreadable"),
+        }
+    }
+}
+
+impl Error for ServerError {}
+
 impl Server {
-    pub fn with_config(config: ServerConfig) -> Result<Self, ServerError> {
+    pub fn from_config(config: ServerConfig) -> Result<Self, ServerError> {
         let server = Server {
             ticks: 0,
-            poll: Poll::new().map_err(|_| ServerError::PollError)?,
+            poll: Poll::new().map_err(ServerError::PollError)?,
             events: Events::with_capacity(2048),
             tcp_listener: TcpListener::bind(
                 format!("{}:{}", config.addr, config.port)
@@ -62,6 +82,7 @@ impl Server {
                     .map_err(|_| ServerError::FailedToParseAddr)?,
             )
             .map_err(|_| ServerError::FailedToBind)?,
+            clients: Vec::new(),
         };
 
         Ok(server)
@@ -83,5 +104,34 @@ impl Server {
             .registry()
             .deregister(&mut self.tcp_listener)
             .map_err(|_| ServerError::FailedToMakeUnreadable)
+    }
+    
+    fn accept_client(&mut self) {
+        match self.tcp_listener.accept() {
+            Ok((socket, _)) => {
+                self.clients.push(Client::new(socket));
+            }
+            Err(e) => {
+                eprintln!("Failed to accept client {}", e);
+            }
+        }
+    }
+
+    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        loop {
+            self.poll.poll(&mut self.events, None)?;
+            for event in self.events.iter() {
+                if event.token() != SERVER {
+                    match self.tcp_listener.accept() {
+                        Ok((socket, _)) => {
+                            self.clients.push(Client::new(socket));
+                        }
+                        Err(_) => {
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
