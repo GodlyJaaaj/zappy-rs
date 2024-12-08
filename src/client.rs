@@ -1,7 +1,7 @@
 use mio::net::TcpStream;
 
 pub struct Client {
-    socket: TcpStream,
+    pub socket: TcpStream,
 }
 
 impl Client {

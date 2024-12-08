@@ -22,8 +22,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         1,
     );
     let mut server = Server::from_config(server_config).unwrap();
-    if let Err(e) = server.try_make_readable() {
-        return Err(Box::new(e));
-    }
+    server.try_make_readable()?;
+    server.run()?;
     Ok(())
 }
