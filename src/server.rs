@@ -1,7 +1,9 @@
 use crate::client::Client;
 use mio::{net::TcpListener, Events, Poll, Token};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::io::Read;
 
 const SERVER: Token = Token(0);
 
@@ -42,7 +44,7 @@ pub struct Server {
     poll: Poll,
     events: Events,
     tcp_listener: TcpListener,
-    clients: Vec<Client>,
+    clients: HashMap<usize, Client>, //replace by hashmap
     //freq: u16,
     //teams
 }
@@ -82,7 +84,7 @@ impl Server {
                     .map_err(|_| ServerError::FailedToParseAddr)?,
             )
             .map_err(|_| ServerError::FailedToBind)?,
-            clients: Vec::new(),
+            clients: HashMap::new(),
         };
 
         Ok(server)
@@ -106,32 +108,57 @@ impl Server {
             .map_err(|_| ServerError::FailedToMakeUnreadable)
     }
     
-    fn accept_client(&mut self) {
-        match self.tcp_listener.accept() {
+    fn accept_client(tcp_listener: &TcpListener) -> Result<Client, Box<dyn Error>> {
+        match tcp_listener.accept() {
             Ok((socket, _)) => {
-                self.clients.push(Client::new(socket));
+                Ok(Client::new(socket))
             }
             Err(e) => {
-                eprintln!("Failed to accept client {}", e);
+                eprintln!("Failed to accept client {}:{}", e, e.kind());
+                Err(e.into())
             }
         }
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        let mut clients = SERVER.0 + 1;
         loop {
             self.poll.poll(&mut self.events, None)?;
             for event in self.events.iter() {
-                if event.token() != SERVER {
-                    match self.tcp_listener.accept() {
-                        Ok((socket, _)) => {
-                            self.clients.push(Client::new(socket));
-                        }
-                        Err(_) => {
+                match event.token() {
+                    SERVER => {
+                        let Ok(mut new_client)= Server::accept_client(&self.tcp_listener) else {
+                            eprintln!("Failed to accept client");
                             continue;
+                        };
+                        self.poll.registry().register(&mut new_client.socket,
+                                                      Token(clients),
+                                                      mio::Interest::READABLE)?;
+                        self.clients.insert(clients, new_client);
+                        clients += 1;
+                    },
+                    _ => {
+                        if event.is_readable() {
+                            let mut buf = [0; 1024];
+                            let client = self.clients.get_mut(&event.token().0).unwrap();
+                            match client.socket.read(&mut buf) {
+                                Ok(0) => {
+                                    println!("Client disconnected");
+                                    self.poll.registry().deregister(&mut client.socket)?;
+                                    self.clients.remove(&event.token().0);
+                                },
+                                Ok(n) => {
+                                    println!("Read {} bytes", n);
+                                },
+                                Err(e) => {
+                                    eprintln!("Failed to read from client {}:{}", e, e.kind());
+                                }
+                            }
                         }
-                    }
+                    },
                 }
             }
+            self.events.clear();
         }
     }
 }
