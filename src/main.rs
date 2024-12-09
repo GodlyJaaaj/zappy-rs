@@ -1,32 +1,28 @@
-use tokio::net::TcpListener;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+mod cell;
+mod client;
+mod egg;
+mod gui;
+mod map;
+mod player;
+mod resources;
+mod server;
+mod vec2;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+use crate::server::{Server, ServerConfig};
+use std::error::Error;
 
-    loop {
-        let (mut socket, _) = listener.accept().await?;
-
-        tokio::spawn(async move {
-            let mut buf = [0; 1024];
-
-            loop {
-                let n = match socket.read(&mut buf).await {
-                    Ok(n) if n == 0 => return,
-                    Ok(n) => n,
-                    Err(e) => {
-                        eprintln!("failed to read from socket; err = {:?}", e);
-                        return;
-                    }
-                };
-
-                if let Err(e) = socket.write_all(&buf[0..n]).await {
-                    eprintln!("failed to write to socket; err = {:?}", e);
-                    return;
-                }
-                println!("Received: {:?}", String::from_utf8_lossy(&buf[..n]));
-            }
-        });
-    }
+fn main() -> Result<(), Box<dyn Error>> {
+    let server_config = ServerConfig::new(
+        "127.0.0.1".to_string(),
+        4242,
+        10,
+        10,
+        vec!["Team1".to_string(), "Team2".to_string()],
+        4,
+        1,
+    );
+    let mut server = Server::from_config(server_config).unwrap();
+    server.try_make_readable()?;
+    server.run()?;
+    Ok(())
 }
