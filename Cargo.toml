@@ -13,4 +13,4 @@ name = "zappy-rs"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1.42.0", features = ["net"] }
+tokio = { version = "1.42.0", features = ["full"] }

@@ -1,9 +1,9 @@
 use crate::client::Client;
-use tokio::net::TcpListener;
-use core::unimplemented;
+use tokio::net::{TcpListener, TcpStream};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use tokio::io;
 
 pub struct ServerConfig {
     addr: String,
@@ -38,7 +38,7 @@ impl ServerConfig {
 }
 
 pub struct Server {
-    ticks: u128,
+    ticks: u64,
     tcp_listener: TcpListener,
     clients: HashMap<usize, Client>, //replace by hashmap
     //freq: u16,
@@ -47,9 +47,8 @@ pub struct Server {
 
 #[derive(Debug)]
 pub enum ServerError {
-    PollError(std::io::Error),
     FailedToParseAddr,
-    FailedToBind,
+    FailedToBind(std::io::Error),
     FailedToMakeReadable,
     FailedToMakeUnreadable,
 }
@@ -57,9 +56,8 @@ pub enum ServerError {
 impl Display for ServerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ServerError::PollError(e) => write!(f, "Failed to create poll: {}", e),
             ServerError::FailedToParseAddr => write!(f, "Failed to parse address"),
-            ServerError::FailedToBind => write!(f, "Failed to bind address"),
+            ServerError::FailedToBind(e) => write!(f, "Failed to bind address: {}", e),
             ServerError::FailedToMakeReadable => write!(f, "Failed to make server readable"),
             ServerError::FailedToMakeUnreadable => write!(f, "Failed to make server unreadable"),
         }
@@ -69,54 +67,26 @@ impl Display for ServerError {
 impl Error for ServerError {}
 
 impl Server {
-    pub fn from_config(config: ServerConfig) -> Result<Self, ServerError> {
-	unimplemented!();
+    pub async fn from_config(config: ServerConfig) -> io::Result<Server> {
+	let server = Server {
+	    ticks: 0,
+	    tcp_listener: TcpListener::bind(config.addr).await?,
+	    clients: HashMap::new(),
+	};
+
+	Ok(server)
     }
 
-    fn accept_client(tcp_listener: &TcpListener) -> Result<Client, Box<dyn Error>> {
-	unimplemented!();
+    pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+	loop {
+            // The second item contains the IP and port of the new connection.
+            let (socket, _) = self.tcp_listener.accept().await.unwrap();
+            Self::accept_client(socket).await.ok();
+	}
     }
 
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-	unimplemented!();
-        // let mut clients = SERVER.0 + 1;
-        // loop {
-        //     self.poll.poll(&mut self.events, None)?;
-        //     for event in self.events.iter() {
-        //         match event.token() {
-        //             SERVER => {
-        //                 let Ok(mut new_client)= Server::accept_client(&self.tcp_listener) else {
-        //                     eprintln!("Failed to accept client");
-        //                     continue;
-        //                 };
-        //                 self.poll.registry().register(&mut new_client.socket,
-        //                                               Token(clients),
-        //                                               mio::Interest::READABLE)?;
-        //                 self.clients.insert(clients, new_client);
-        //                 clients += 1;
-        //             },
-        //             _ => {
-        //                 if event.is_readable() {
-        //                     let mut buf = [0; 1024];
-        //                     let client = self.clients.get_mut(&event.token().0).unwrap();
-        //                     match client.socket.read(&mut buf) {
-        //                         Ok(0) => {
-        //                             println!("Client disconnected");
-        //                             self.poll.registry().deregister(&mut client.socket)?;
-        //                             self.clients.remove(&event.token().0);
-        //                         },
-        //                         Ok(n) => {
-        //                             println!("Read {} bytes", n);
-        //                         },
-        //                         Err(e) => {
-        //                             eprintln!("Failed to read from client {}:{}", e, e.kind());
-        //                         }
-        //                     }
-        //                 }
-        //             },
-        //         }
-        //     }
-        //     self.events.clear();
-        // }
+    async fn accept_client(socket: TcpStream) -> Result<Client, Box<dyn Error>> {
+	println!("New client");
+	Ok(Client::new(socket))
     }
 }

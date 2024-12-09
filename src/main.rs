@@ -14,9 +14,10 @@ mod vec2;
 use crate::server::{Server, ServerConfig};
 use std::error::Error;
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let server_config = ServerConfig::new(
-        "127.0.0.1".to_string(),
+        "127.0.0.1:4242".to_string(),
         4242,
         10,
         10,
@@ -24,7 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         4,
         1,
     );
-    let mut server = Server::from_config(server_config).unwrap();
-    server.run()?;
+    let mut server = Server::from_config(server_config).await.unwrap();
+    server.run().await?;
     Ok(())
 }
