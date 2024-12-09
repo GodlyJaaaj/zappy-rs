@@ -7,6 +7,7 @@ mod egg;
 mod gui;
 mod map;
 mod player;
+mod protocol;
 mod resources;
 mod server;
 mod vec2;
@@ -17,7 +18,7 @@ use std::error::Error;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let server_config = ServerConfig::new(
-        "127.0.0.1:4242".to_string(),
+        "127.0.0.1".to_string(),
         4242,
         10,
         10,

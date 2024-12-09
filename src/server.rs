@@ -1,5 +1,7 @@
 use crate::client::Client;
+use crate::protocol::ClientAction;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -70,7 +72,7 @@ impl Server {
     pub async fn from_config(config: ServerConfig) -> io::Result<Server> {
 	let server = Server {
 	    ticks: 0,
-	    tcp_listener: TcpListener::bind(config.addr).await?,
+	    tcp_listener: TcpListener::bind(format!("{}:{}", config.addr, config.port)).await?,
 	    clients: HashMap::new(),
 	};
 
@@ -81,12 +83,15 @@ impl Server {
 	loop {
             // The second item contains the IP and port of the new connection.
             let (socket, _) = self.tcp_listener.accept().await.unwrap();
-            Self::accept_client(socket).await.ok();
+	    let (tx, mut rx) = mpsc::channel(32);
+	    tokio::spawn(async move {
+		Self::process_connection(socket, tx).await;
+	    });
 	}
     }
 
-    async fn accept_client(socket: TcpStream) -> Result<Client, Box<dyn Error>> {
-	println!("New client");
-	Ok(Client::new(socket))
+    async fn process_connection(socket: TcpStream, tx: mpsc::Sender<ClientAction>) -> () {
+	let client = Client::new(socket);
+	
     }
 }
