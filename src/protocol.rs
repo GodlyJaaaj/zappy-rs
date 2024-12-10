@@ -1,5 +1,6 @@
 use crate::resources::Resource;
 
+#[derive(Debug)]
 pub enum ClientAction {
     Broadcast(String),
     Forward,

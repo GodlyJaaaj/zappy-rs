@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         4,
         1,
     );
-    let mut server = Server::from_config(server_config).await.unwrap();
+    let mut server = Server::from_config(server_config);
     server.run().await?;
     Ok(())
 }

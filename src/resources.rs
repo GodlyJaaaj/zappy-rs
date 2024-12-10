@@ -1,6 +1,7 @@
 use core::ops::{Index, IndexMut};
 use std::fmt;
 
+#[derive(Debug)]
 #[repr(u8)]
 pub enum Resource {
     Deraumere,
