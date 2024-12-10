@@ -49,20 +49,11 @@ pub struct Server {
 
 #[derive(Debug)]
 pub enum ServerError {
-    FailedToParseAddr,
-    FailedToBind(std::io::Error),
-    FailedToMakeReadable,
-    FailedToMakeUnreadable,
 }
 
 impl Display for ServerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ServerError::FailedToParseAddr => write!(f, "Failed to parse address"),
-            ServerError::FailedToBind(e) => write!(f, "Failed to bind address: {}", e),
-            ServerError::FailedToMakeReadable => write!(f, "Failed to make server readable"),
-            ServerError::FailedToMakeUnreadable => write!(f, "Failed to make server unreadable"),
-        }
+	todo!()
     }
 }
 
