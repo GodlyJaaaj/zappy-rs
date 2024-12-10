@@ -8,9 +8,9 @@ rust-version = "1.82.0"
 keywords = ["zappy", "zappy-rs", "multithreaded", "blazing-fast", "epitech"]
 default-run = "zappy-rs"
 
-[dependencies]
-mio = { version = "1.0.3", features = ["os-poll", "net"] }
-
 [[bin]]
 name = "zappy-rs"
 path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1.42.0", features = ["full"] }

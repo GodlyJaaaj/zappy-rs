@@ -1,9 +1,13 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 mod cell;
 mod client;
 mod egg;
 mod gui;
 mod map;
 mod player;
+mod protocol;
 mod resources;
 mod server;
 mod vec2;
@@ -11,7 +15,8 @@ mod vec2;
 use crate::server::{Server, ServerConfig};
 use std::error::Error;
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let server_config = ServerConfig::new(
         "127.0.0.1".to_string(),
         4242,
@@ -21,8 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         4,
         1,
     );
-    let mut server = Server::from_config(server_config).unwrap();
-    server.try_make_readable()?;
-    server.run()?;
+    let mut server = Server::from_config(server_config).await.unwrap();
+    server.run().await?;
     Ok(())
 }

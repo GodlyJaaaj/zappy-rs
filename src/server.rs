@@ -1,11 +1,11 @@
 use crate::client::Client;
-use mio::{net::TcpListener, Events, Poll, Token};
+use crate::protocol::ClientAction;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::io::Read;
-
-const SERVER: Token = Token(0);
+use tokio::io;
 
 pub struct ServerConfig {
     addr: String,
@@ -40,9 +40,7 @@ impl ServerConfig {
 }
 
 pub struct Server {
-    ticks: u128,
-    poll: Poll,
-    events: Events,
+    ticks: u64,
     tcp_listener: TcpListener,
     clients: HashMap<usize, Client>, //replace by hashmap
     //freq: u16,
@@ -51,114 +49,40 @@ pub struct Server {
 
 #[derive(Debug)]
 pub enum ServerError {
-    PollError(std::io::Error),
-    FailedToParseAddr,
-    FailedToBind,
-    FailedToMakeReadable,
-    FailedToMakeUnreadable,
 }
 
 impl Display for ServerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ServerError::PollError(e) => write!(f, "Failed to create poll: {}", e),
-            ServerError::FailedToParseAddr => write!(f, "Failed to parse address"),
-            ServerError::FailedToBind => write!(f, "Failed to bind address"),
-            ServerError::FailedToMakeReadable => write!(f, "Failed to make server readable"),
-            ServerError::FailedToMakeUnreadable => write!(f, "Failed to make server unreadable"),
-        }
+	todo!()
     }
 }
 
 impl Error for ServerError {}
 
 impl Server {
-    pub fn from_config(config: ServerConfig) -> Result<Self, ServerError> {
-        let server = Server {
-            ticks: 0,
-            poll: Poll::new().map_err(ServerError::PollError)?,
-            events: Events::with_capacity(2048),
-            tcp_listener: TcpListener::bind(
-                format!("{}:{}", config.addr, config.port)
-                    .parse()
-                    .map_err(|_| ServerError::FailedToParseAddr)?,
-            )
-            .map_err(|_| ServerError::FailedToBind)?,
-            clients: HashMap::new(),
-        };
+    pub async fn from_config(config: ServerConfig) -> io::Result<Server> {
+	let server = Server {
+	    ticks: 0,
+	    tcp_listener: TcpListener::bind(format!("{}:{}", config.addr, config.port)).await?,
+	    clients: HashMap::new(),
+	};
 
-        Ok(server)
+	Ok(server)
     }
 
-    /// Try to make the server readable
-    /// This will allow the server to accept new connections
-    pub fn try_make_readable(&mut self) -> Result<(), ServerError> {
-        self.poll
-            .registry()
-            .register(&mut self.tcp_listener, SERVER, mio::Interest::READABLE)
-            .map_err(|_| ServerError::FailedToMakeReadable)
+    pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+	loop {
+            // The second item contains the IP and port of the new connection.
+            let (socket, _) = self.tcp_listener.accept().await.unwrap();
+	    let (tx, mut rx) = mpsc::channel(32);
+	    tokio::spawn(async move {
+		Self::process_connection(socket, tx).await;
+	    });
+	}
     }
 
-    /// Try to make the server unreadable
-    /// This will prevent the server from accepting new connections
-    pub fn try_make_unreadable(&mut self) -> Result<(), ServerError> {
-        self.poll
-            .registry()
-            .deregister(&mut self.tcp_listener)
-            .map_err(|_| ServerError::FailedToMakeUnreadable)
-    }
-    
-    fn accept_client(tcp_listener: &TcpListener) -> Result<Client, Box<dyn Error>> {
-        match tcp_listener.accept() {
-            Ok((socket, _)) => {
-                Ok(Client::new(socket))
-            }
-            Err(e) => {
-                eprintln!("Failed to accept client {}:{}", e, e.kind());
-                Err(e.into())
-            }
-        }
-    }
-
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut clients = SERVER.0 + 1;
-        loop {
-            self.poll.poll(&mut self.events, None)?;
-            for event in self.events.iter() {
-                match event.token() {
-                    SERVER => {
-                        let Ok(mut new_client)= Server::accept_client(&self.tcp_listener) else {
-                            eprintln!("Failed to accept client");
-                            continue;
-                        };
-                        self.poll.registry().register(&mut new_client.socket,
-                                                      Token(clients),
-                                                      mio::Interest::READABLE)?;
-                        self.clients.insert(clients, new_client);
-                        clients += 1;
-                    },
-                    _ => {
-                        if event.is_readable() {
-                            let mut buf = [0; 1024];
-                            let client = self.clients.get_mut(&event.token().0).unwrap();
-                            match client.socket.read(&mut buf) {
-                                Ok(0) => {
-                                    println!("Client disconnected");
-                                    self.poll.registry().deregister(&mut client.socket)?;
-                                    self.clients.remove(&event.token().0);
-                                },
-                                Ok(n) => {
-                                    println!("Read {} bytes", n);
-                                },
-                                Err(e) => {
-                                    eprintln!("Failed to read from client {}:{}", e, e.kind());
-                                }
-                            }
-                        }
-                    },
-                }
-            }
-            self.events.clear();
-        }
+    async fn process_connection(socket: TcpStream, tx: mpsc::Sender<ClientAction>) -> () {
+	let client = Client::new(socket);
+	
     }
 }
