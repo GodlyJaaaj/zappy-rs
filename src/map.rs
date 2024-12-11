@@ -1,6 +1,6 @@
-use std::fmt;
 use crate::cell::Cell;
 use crate::vec2::Size;
+use std::fmt;
 
 pub struct Map {
     size: Size,
@@ -11,7 +11,7 @@ impl Map {
     pub fn new(size: Size) -> Self {
         Map {
             size,
-            map: vec![vec![Cell::new(); size.x() as usize]; size.y() as usize]
+            map: vec![vec![Cell::new(); size.x() as usize]; size.y() as usize],
         }
     }
 

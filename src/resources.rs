@@ -9,12 +9,12 @@ pub enum Resource {
     Phiras,
     Sibur,
     Thystame,
-    Food,			// Keep this last.
+    Food, // Keep this last.
 }
 
 #[derive(Default, Clone)]
 pub struct Resources {
-    contents: [u64; Resource::Food as usize]
+    contents: [u64; Resource::Food as usize],
 }
 
 impl Index<Resource> for Resources {
@@ -33,20 +33,22 @@ impl IndexMut<Resource> for Resources {
 
 impl fmt::Display for Resources {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-	       "{},{},{},{},{},{},{}",
-	       self[Resource::Deraumere],
-	       self[Resource::Linemate],
-	       self[Resource::Mendiane],
-	       self[Resource::Phiras],
-	       self[Resource::Sibur],
-	       self[Resource::Thystame],
-	       self[Resource::Food])
+        write!(
+            f,
+            "{},{},{},{},{},{},{}",
+            self[Resource::Deraumere],
+            self[Resource::Linemate],
+            self[Resource::Mendiane],
+            self[Resource::Phiras],
+            self[Resource::Sibur],
+            self[Resource::Thystame],
+            self[Resource::Food]
+        )
     }
 }
 
 impl fmt::Debug for Resources {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-	write!(f, "{}", self)
+        write!(f, "{}", self)
     }
 }

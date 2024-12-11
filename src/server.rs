@@ -1,11 +1,11 @@
 use crate::client::Client;
 use crate::protocol::ClientAction;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::io;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 
 pub struct ServerConfig {
     addr: String,
@@ -43,17 +43,16 @@ pub struct Server {
     ticks: u64,
     tcp_listener: TcpListener,
     clients: HashMap<usize, Client>, //replace by hashmap
-    //freq: u16,
-    //teams
+                                     //freq: u16,
+                                     //teams
 }
 
 #[derive(Debug)]
-pub enum ServerError {
-}
+pub enum ServerError {}
 
 impl Display for ServerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-	todo!()
+        todo!()
     }
 }
 
@@ -61,28 +60,27 @@ impl Error for ServerError {}
 
 impl Server {
     pub async fn from_config(config: ServerConfig) -> io::Result<Server> {
-	let server = Server {
-	    ticks: 0,
-	    tcp_listener: TcpListener::bind(format!("{}:{}", config.addr, config.port)).await?,
-	    clients: HashMap::new(),
-	};
+        let server = Server {
+            ticks: 0,
+            tcp_listener: TcpListener::bind(format!("{}:{}", config.addr, config.port)).await?,
+            clients: HashMap::new(),
+        };
 
-	Ok(server)
+        Ok(server)
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-	loop {
+        loop {
             // The second item contains the IP and port of the new connection.
             let (socket, _) = self.tcp_listener.accept().await.unwrap();
-	    let (tx, mut rx) = mpsc::channel(32);
-	    tokio::spawn(async move {
-		Self::process_connection(socket, tx).await;
-	    });
-	}
+            let (tx, mut rx) = mpsc::channel(32);
+            tokio::spawn(async move {
+                Self::process_connection(socket, tx).await;
+            });
+        }
     }
 
     async fn process_connection(socket: TcpStream, tx: mpsc::Sender<ClientAction>) -> () {
-	let client = Client::new(socket);
-	
+        let client = Client::new(socket);
     }
 }
