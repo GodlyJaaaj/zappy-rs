@@ -27,18 +27,22 @@ impl Connection {
         }
     }
 
+    async fn read_line(&mut self) -> Result<String, ConnectionError> {
+        let mut line = String::new();
+        match self.stream.read_line(&mut line).await {
+            Ok(0) => Err(ConnectionError::Closed),
+            Ok(_) => Ok(line),
+            Err(e) => Err(ConnectionError::IO(e)),
+        }
+    }
+
     async fn update(&mut self) -> Result<(), ConnectionError> {
         tokio::select! {
-            Ok(buf) = async {
-            let mut buf = String::new();
-            match self.stream.read_line(&mut buf).await {
-                Ok(0) => Err(ConnectionError::Closed),
-                Err(e) => Err(ConnectionError::IO(e)),
-                _ => Ok(buf)
-            }
-            } => {
+            val = self.read_line() => {
+                let line = val?;
+                println!("{}", line);
+                Ok(())
             }
         }
-        Ok(())
     }
 }
