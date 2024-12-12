@@ -2,7 +2,7 @@
 #![allow(unused_variables)]
 
 mod cell;
-mod client;
+mod connection;
 mod egg;
 mod gui;
 mod map;

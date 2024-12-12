@@ -1,8 +1,7 @@
-use crate::client::Client;
+use crate::connection::Connection;
 use crate::protocol::ClientAction;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -40,10 +39,6 @@ impl ServerConfig {
 
 pub struct Server {
     config: ServerConfig,
-    ticks: u64,
-    clients: HashMap<usize, Client>, //replace by hashmap
-    //freq: u16,
-    //teams
 }
 
 #[derive(Debug)]
@@ -62,8 +57,6 @@ impl Server {
     pub fn from_config(config: ServerConfig) -> Server {
 	Server {
 	    config,
-	    ticks: 0,
-	    clients: HashMap::new(),
 	}
     }
 
@@ -92,8 +85,8 @@ impl Server {
     }
 
     async fn process_connection(socket: TcpStream, tx: mpsc::Sender<ClientAction>) {
-	let client = Client::new(socket);
-	loop{}
+	let mut client = Connection::new(socket);
+	client.handle().await;
     }
 
     async fn process_events(&mut self, mut rx: mpsc::Receiver<ClientAction>) {
