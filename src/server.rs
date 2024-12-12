@@ -2,8 +2,9 @@ use crate::connection::Connection;
 use crate::protocol::ClientAction;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::mpsc;
+use tokio::{select, time};
 
 pub struct ServerConfig {
     addr: String,
@@ -60,34 +61,32 @@ impl Server {
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let addr = format!("{}:{}", self.config.addr, self.config.port);
         let listener = TcpListener::bind(addr).await?;
-        let (tx, rx) = mpsc::channel(32);
+        let (tx, mut rx) = mpsc::channel::<ClientAction>(32);
 
-        tokio::spawn(async move { Self::handle_connections(listener, tx).await });
-        self.process_events(rx).await;
-        Ok(())
-    }
-
-    async fn handle_connections(listener: TcpListener, tx: mpsc::Sender<ClientAction>) {
+        let mut interval = time::interval(time::Duration::from_millis(100));
         loop {
-            // The second item contains the IP and port of the new connection.
-            let (socket, _) = listener.accept().await.unwrap();
-            let ctx = tx.clone();
-            tokio::spawn(async move {
-                ctx.send(ClientAction::Forward).await.unwrap();
-                Self::process_connection(socket, ctx).await;
-            });
+            select! {
+                biased;
+                Ok((socket, _)) = listener.accept() => {
+                    println!("Accepted connection from {:?}", socket);
+                    let ctx = tx.clone();
+                    tokio::spawn(async move {
+                        let mut client = Connection::new(socket);
+                        client.handle(ctx).await
+                    });
+                },
+                _ = interval.tick() => {
+                        println!("Server tick!");
+                    },
+
+                Some(res) = rx.recv() => {
+                    self.process_events(res).await;
+                },
+            }
         }
     }
 
-    async fn process_connection(socket: TcpStream, tx: mpsc::Sender<ClientAction>) {
-        let mut client = Connection::new(socket);
-        client.handle().await;
-    }
-
-    async fn process_events(&mut self, mut rx: mpsc::Receiver<ClientAction>) {
-        loop {
-            let action = rx.recv().await;
-            println!("Processing action {:?}", action);
-        }
+    async fn process_events(&mut self, action: ClientAction) {
+        println!("Processing action {:?}", action);
     }
 }

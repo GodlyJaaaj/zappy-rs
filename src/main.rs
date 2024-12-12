@@ -5,13 +5,13 @@ mod cell;
 mod connection;
 mod egg;
 mod gui;
+mod handler;
 mod map;
 mod player;
 mod protocol;
 mod resources;
 mod server;
 mod vec2;
-mod handler;
 
 use crate::server::{Server, ServerConfig};
 use std::error::Error;

@@ -1,10 +1,10 @@
 use crate::handler::command::CommandHandler;
 
-pub struct LoginHandler{}
+pub struct LoginHandler {}
 
 impl LoginHandler {
     pub(crate) fn new() -> Self {
-        LoginHandler{}
+        LoginHandler {}
     }
 }
 
