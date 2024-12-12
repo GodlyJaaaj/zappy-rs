@@ -1,8 +1,11 @@
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
+use crate::handler::command::CommandHandler;
+use crate::handler::login::LoginHandler;
 
 pub struct Connection {
     stream: BufReader<TcpStream>,
+    command_handler: Box<dyn CommandHandler>
 }
 
 #[derive(Debug)]
@@ -15,6 +18,7 @@ impl Connection {
     pub fn new(socket: TcpStream) -> Self {
         Connection {
             stream: BufReader::new(socket),
+            command_handler: Box::new(LoginHandler::new())
         }
     }
 
@@ -40,7 +44,7 @@ impl Connection {
         tokio::select! {
             val = self.read_line() => {
                 let line = val?;
-                println!("{}", line);
+                self.command_handler.handle_command(line);
                 Ok(())
             }
         }

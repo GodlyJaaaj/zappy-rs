@@ -69,11 +69,11 @@ impl Server {
 
     async fn handle_connections(listener: TcpListener, tx: mpsc::Sender<ClientAction>) {
         loop {
-            tx.send(ClientAction::Forward).await.unwrap();
             // The second item contains the IP and port of the new connection.
             let (socket, _) = listener.accept().await.unwrap();
             let ctx = tx.clone();
             tokio::spawn(async move {
+                ctx.send(ClientAction::Forward).await.unwrap();
                 Self::process_connection(socket, ctx).await;
             });
         }

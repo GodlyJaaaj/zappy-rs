@@ -11,6 +11,7 @@ mod protocol;
 mod resources;
 mod server;
 mod vec2;
+mod handler;
 
 use crate::server::{Server, ServerConfig};
 use std::error::Error;
@@ -18,7 +19,7 @@ use std::error::Error;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let server_config = ServerConfig::new(
-        "127.0.0.1".to_string(),
+        "0.0.0.0".to_string(),
         4242,
         10,
         10,
