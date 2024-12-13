@@ -63,7 +63,7 @@ impl Server {
         let listener = TcpListener::bind(addr).await?;
         let (tx, mut rx) = mpsc::channel::<ClientAction>(32);
 
-        let mut interval = time::interval(time::Duration::from_millis(100));
+        let mut interval = time::interval(time::Duration::from_secs(1));
         loop {
             select! {
                 biased;
