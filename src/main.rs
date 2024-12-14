@@ -12,6 +12,7 @@ mod protocol;
 mod resources;
 mod server;
 mod vec2;
+mod team;
 
 use crate::server::{Server, ServerConfig};
 use std::error::Error;
@@ -27,7 +28,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         4,
         1,
     );
-    let mut server = Server::from_config(server_config);
+    let mut server = Server::from_config(server_config).await?;
     server.run().await?;
     Ok(())
 }
