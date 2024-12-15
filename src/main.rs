@@ -2,14 +2,17 @@
 #![allow(unused_variables)]
 
 mod cell;
-mod client;
+mod connection;
 mod egg;
 mod gui;
+mod handler;
 mod map;
+mod pending;
 mod player;
 mod protocol;
 mod resources;
 mod server;
+mod team;
 mod vec2;
 
 use crate::server::{Server, ServerConfig};
@@ -18,7 +21,7 @@ use std::error::Error;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let server_config = ServerConfig::new(
-        "127.0.0.1".to_string(),
+        "0.0.0.0".to_string(),
         4242,
         10,
         10,
@@ -26,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         4,
         1,
     );
-    let mut server = Server::from_config(server_config).await.unwrap();
+    let mut server = Server::from_config(server_config).await?;
     server.run().await?;
     Ok(())
 }
