@@ -23,11 +23,6 @@ const RESET: &str = "\x1b[0m";
 
 impl fmt::Display for Cell {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "({},{GREEN}{}{RESET})",
-            self.resources,
-            self.eggs.len()
-        )
+        write!(f, "({},{GREEN}{}{RESET})", self.resources, self.eggs.len())
     }
 }
