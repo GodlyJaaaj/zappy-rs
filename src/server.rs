@@ -1,14 +1,17 @@
 use crate::connection::Connection;
+use crate::map::Map;
+use crate::pending::PendingClient;
 use crate::protocol::ClientAction;
+use crate::team::Team;
+use crate::vec2::Size;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::{select, time};
-use crate::map::Map;
-use crate::team::Team;
-use crate::vec2::Size;
 
 pub struct ServerConfig {
     addr: String,
@@ -42,9 +45,9 @@ impl ServerConfig {
     }
 }
 
-struct ThreadChannel {
-    tx: mpsc::Sender<ClientAction>,
-    rx: mpsc::Receiver<ClientAction>,
+pub struct ThreadChannel {
+    pub(crate) tx: mpsc::Sender<ClientAction>,
+    pub(crate) rx: mpsc::Receiver<ClientAction>,
 }
 
 pub struct Server {
@@ -54,7 +57,8 @@ pub struct Server {
     freq: u64,
     map: Map,
     max_clients: u64,
-    teams: Vec<Team>,
+    teams: HashMap<String, Team>,
+    pending_clients: Vec<PendingClient>,
 }
 
 #[derive(Debug)]
@@ -77,23 +81,26 @@ impl Server {
             .await
             .map_err(|_| ServerError::FailedToBind)?;
         let (tx, rx) = mpsc::channel::<ClientAction>(32);
-        let thread_channel = ThreadChannel { tx, rx };
         let tick_interval = time::interval(time::Duration::from_nanos(
             (1_000_000_000f64 / config.freq as f64) as u64,
         ));
-        let mut teams = vec![];
+        let mut teams = HashMap::new();
         for team in config.teams {
-            teams.push(Team::new(teams.len(), team, config.clients_nb));
+            teams.insert(
+                team.clone(),
+                Team::new(teams.len(), team, config.clients_nb),
+            );
         }
 
         Ok(Server {
-            thread_channel,
+            thread_channel: ThreadChannel { tx, rx },
             tick_interval,
             socket,
             freq: config.freq as u64,
             map: Map::new(Size::new(config.width as u64, config.height as u64)),
             max_clients: config.clients_nb,
-            teams
+            teams,
+            pending_clients: vec![],
         })
     }
 
@@ -128,11 +135,18 @@ impl Server {
     }
 
     fn accept_client(&mut self, socket: TcpStream, addr: SocketAddr) {
+        static CLIENT_ID: AtomicU64 = AtomicU64::new(0);
+        let client_id = CLIENT_ID.fetch_add(1, Ordering::Relaxed);
         println!("Accepted connection from {:?}", socket);
-        let ctx = self.thread_channel.tx.clone();
+        let server_tx = self.thread_channel.tx.clone();
+        let (client_tx, client_rx) = mpsc::channel::<ClientAction>(32);
+        self.pending_clients.push(PendingClient {
+            client_id,
+            client_tx,
+        });
         tokio::spawn(async move {
-            let mut client = Connection::new(socket);
-            client.handle(ctx).await
+            let mut client = Connection::new(client_id, socket);
+            client.handle(server_tx, client_rx).await
         });
     }
 
@@ -141,6 +155,6 @@ impl Server {
     }
 
     async fn process_events(&mut self, action: ClientAction) {
-        println!("Processing action {:?}", action);
+        println!("Processing action {:?}", action.action);
     }
 }

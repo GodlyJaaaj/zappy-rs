@@ -8,5 +8,4 @@ pub struct Player {
     pos: Position,
     elevation: u8,
     satiety: u8,
-    // add channel to make the main thread able to answer to the player
 }

@@ -7,12 +7,13 @@ mod egg;
 mod gui;
 mod handler;
 mod map;
+mod pending;
 mod player;
 mod protocol;
 mod resources;
 mod server;
-mod vec2;
 mod team;
+mod vec2;
 
 use crate::server::{Server, ServerConfig};
 use std::error::Error;

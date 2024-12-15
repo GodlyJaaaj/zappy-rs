@@ -13,7 +13,7 @@ impl Team {
             id,
             name,
             players: Vec::new(),
-            max_clients
+            max_clients,
         }
     }
 

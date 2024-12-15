@@ -1,11 +1,12 @@
 use crate::handler::command::CommandHandler;
 use crate::handler::login::LoginHandler;
-use crate::protocol::ClientAction;
+use crate::protocol::{Action, ClientAction};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
 pub struct Connection {
+    id: u64,
     stream: BufReader<TcpStream>,
     command_handler: Box<dyn CommandHandler + Send>,
 }
@@ -17,17 +18,28 @@ enum ConnectionError {
 }
 
 impl Connection {
-    pub fn new(socket: TcpStream) -> Self {
+    pub fn new(id: u64, socket: TcpStream) -> Self {
         Connection {
+            id,
             stream: BufReader::new(socket),
-            command_handler: Box::new(LoginHandler::new()),
+            command_handler: Box::new(LoginHandler::new(id)),
         }
     }
 
-    pub async fn handle(&mut self, tx: mpsc::Sender<ClientAction>) {
+    pub async fn handle(
+        &mut self,
+        tx: mpsc::Sender<ClientAction>,
+        mut rx: mpsc::Receiver<ClientAction>,
+    ) {
         loop {
-            if let Err(e) = self.update(&tx).await {
+            if let Err(e) = self.update(&tx, &mut rx).await {
                 println!("End of connection: {:?}", e);
+                tx.send(ClientAction {
+                    client_id: self.id,
+                    action: Action::Disconnect,
+                })
+                .await
+                .expect("Failed to send disconnect");
                 break;
             }
         }
@@ -42,12 +54,20 @@ impl Connection {
         }
     }
 
-    async fn update(&mut self, tx: &mpsc::Sender<ClientAction>) -> Result<(), ConnectionError> {
+    async fn update(
+        &mut self,
+        tx: &mpsc::Sender<ClientAction>,
+        rx: &mut mpsc::Receiver<ClientAction>,
+    ) -> Result<(), ConnectionError> {
         tokio::select! {
-            val = self.read_line() => {
-                let line = val?;
-                tx.send(ClientAction::Fork).await.expect("j'ai paniqué");
-                self.command_handler.handle_command(line);
+            cmd = self.read_line() => {
+                let line = cmd?;
+                let action = self.command_handler.handle_command(line).unwrap();
+                tx.send(action).await.expect("Could not send action");
+                Ok(())
+            }
+            res = rx.recv() => {
+                let res = res.expect("Could not receive action from channel");
                 Ok(())
             }
         }
