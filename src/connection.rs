@@ -1,12 +1,12 @@
-use crate::handler::command::CommandHandler;
+use crate::handler::command::{CommandHandler, State};
 use crate::handler::login::LoginHandler;
-use crate::protocol::{Action, ClientAction};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use crate::protocol::{Action, ClientAction, ClientType};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use crate::handler::ai::AiHandler;
 
 pub struct Connection {
-    id: u64,
     stream: BufReader<TcpStream>,
     command_handler: Box<dyn CommandHandler + Send>,
 }
@@ -20,7 +20,6 @@ enum ConnectionError {
 impl Connection {
     pub fn new(id: u64, socket: TcpStream) -> Self {
         Connection {
-            id,
             stream: BufReader::new(socket),
             command_handler: Box::new(LoginHandler::new(id)),
         }
@@ -35,7 +34,7 @@ impl Connection {
             if let Err(e) = self.update(&tx, &mut rx).await {
                 println!("End of connection: {:?}", e);
                 tx.send(ClientAction {
-                    client_id: self.id,
+                    client_id: self.command_handler.id(),
                     action: Action::Disconnect,
                 })
                 .await
@@ -54,6 +53,33 @@ impl Connection {
         }
     }
 
+    async fn login_state(&mut self, res: ClientAction) {
+        match res.action {
+            Action::LoggedIn(t, nb_clients, map_size) => {
+                match t {
+                    //if the client logged in as GUI
+                    ClientType::GUI => {
+                        println!("Logged in as GUI");
+                        todo!("Implement GUI state");
+                    }
+                    //if the client logged in as AI
+                    ClientType::AI => {
+                        println!("Logged in as AI");
+                        self.command_handler = Box::new(AiHandler::new(self.command_handler.id()));
+                    }
+                }
+            }
+            Action::Ko => {
+                println!("Login failed");
+                let _ = self.stream
+                    .write_all(b"ko\n").await;
+            }
+            _ => {
+                println!("Unexpected action: {:?}", res.action);
+            }
+        }
+    }
+
     async fn update(
         &mut self,
         tx: &mpsc::Sender<ClientAction>,
@@ -68,6 +94,17 @@ impl Connection {
             }
             res = rx.recv() => {
                 let res = res.expect("Could not receive action from channel");
+                match self.command_handler.state() {
+                    State::Login => {
+                        self.login_state(res).await;
+                    }
+                    State::Ai => {
+                        todo!("Implement Ai state in connection::update");
+                    }
+                    State::Gui => {
+                        todo!("Implement Gui state");
+                    }
+                }
                 Ok(())
             }
         }

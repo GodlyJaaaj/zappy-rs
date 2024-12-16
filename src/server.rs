@@ -1,7 +1,8 @@
 use crate::connection::Connection;
 use crate::map::Map;
 use crate::pending::PendingClient;
-use crate::protocol::ClientAction;
+use crate::player::Player;
+use crate::protocol::{Action, ClientAction, Ko};
 use crate::team::Team;
 use crate::vec2::Size;
 use std::collections::HashMap;
@@ -58,7 +59,7 @@ pub struct Server {
     map: Map,
     max_clients: u64,
     teams: HashMap<String, Team>,
-    pending_clients: Vec<PendingClient>,
+    pending_clients: HashMap<u64, PendingClient>,
 }
 
 #[derive(Debug)]
@@ -100,7 +101,7 @@ impl Server {
             map: Map::new(Size::new(config.width as u64, config.height as u64)),
             max_clients: config.clients_nb,
             teams,
-            pending_clients: vec![],
+            pending_clients: HashMap::new(),
         })
     }
 
@@ -140,10 +141,13 @@ impl Server {
         println!("Accepted connection from {:?}", socket);
         let server_tx = self.thread_channel.tx.clone();
         let (client_tx, client_rx) = mpsc::channel::<ClientAction>(32);
-        self.pending_clients.push(PendingClient {
+        self.pending_clients.insert(
             client_id,
-            client_tx,
-        });
+            PendingClient {
+                client_id,
+                client_tx,
+            },
+        );
         tokio::spawn(async move {
             let mut client = Connection::new(client_id, socket);
             client.handle(server_tx, client_rx).await
@@ -151,10 +155,50 @@ impl Server {
     }
 
     fn update(&mut self, _instant: time::Instant) {
-        println!("Server tick!");
+        //println!("Server tick!");
     }
 
     async fn process_events(&mut self, action: ClientAction) {
         println!("Processing action {:?}", action.action);
+        match action.action {
+            Action::LoggedIn(_, _, _) => unreachable!("Thread should not send LoggedIn action"),
+            Action::Ko => { unreachable!("Client should not send Ko action") }
+            Action::Broadcast(_) => { todo!("Implement broadcast") }
+            Action::Forward(_) => { todo!("Implement forward") }
+            Action::Right => { todo!("Implement right") }
+            Action::Left => { todo!("Implement left") }
+            Action::Look => { todo!("Implement look") }
+            Action::Inventory => { todo!("Implement inventory") }
+            Action::ConnectNbr => { todo!("Implement connect_nbr") }
+            Action::Fork => { todo!("Implement fork") }
+            Action::Eject => { todo!("Implement eject") }
+            Action::Take(_) => { todo!("Implement take") }
+            Action::Set(_) => { todo!("Implement set") }
+            Action::Incantation => { todo!("Implement incantation") }
+
+
+            Action::Disconnect => {
+                self.pending_clients.remove(&action.client_id); // ensure client is removed
+                for team in self.teams.values_mut() {
+                    team.players
+                        .retain(|player| player.id() != action.client_id);
+                }
+            }
+            Action::Login(team_name) => {
+                //todo! gui team
+                let pending_client = self.pending_clients.remove(&action.client_id);
+                let Some(pending_client) = pending_client else {
+                    unreachable!("Client should be in pending_clients");
+                };
+                let team = self.teams.get_mut(&team_name);
+                let Some(team) = team else {
+                    pending_client.ko().await;
+                    self.pending_clients.insert(action.client_id, pending_client);
+                    return;
+                };
+                let player = Player::new(team_name.clone(), pending_client);
+                team.add_player(player, self.map.size()).await;
+            }
+        }
     }
 }

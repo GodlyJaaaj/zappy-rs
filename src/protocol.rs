@@ -11,7 +11,15 @@ pub struct ClientAction {
 }
 
 #[derive(Debug)]
+pub enum ClientType {
+    GUI,
+    AI,
+}
+
+#[derive(Debug)]
 pub enum Action {
+    Ko,
+
     //Game Action
     Broadcast(String),
     Forward(u64),
@@ -29,5 +37,11 @@ pub enum Action {
     //Server Action
     Disconnect,
     Login(String),
+    LoggedIn(ClientType, u64, (u8, u8)), // (number of slots available, (width, height) of the map)
+
     //GUI Action
+}
+
+pub trait Ko {
+    async fn ko(&self) -> bool;
 }
