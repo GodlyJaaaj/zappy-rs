@@ -22,7 +22,7 @@ pub enum Action {
 
     //Game Action
     Broadcast(String),
-    Forward(u64),
+    Forward,
     Right,
     Left,
     Look,

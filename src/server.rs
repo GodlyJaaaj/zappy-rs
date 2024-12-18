@@ -164,7 +164,7 @@ impl Server {
             Action::LoggedIn(_, _, _) => unreachable!("Thread should not send LoggedIn action"),
             Action::Ko => { unreachable!("Client should not send Ko action") }
             Action::Broadcast(_) => { todo!("Implement broadcast") }
-            Action::Forward(_) => { todo!("Implement forward") }
+            Action::Forward => { todo!("Implement forward") }
             Action::Right => { todo!("Implement right") }
             Action::Left => { todo!("Implement left") }
             Action::Look => { todo!("Implement look") }
