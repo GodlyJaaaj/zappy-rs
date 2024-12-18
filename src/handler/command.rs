@@ -1,4 +1,4 @@
-use crate::protocol::{ClientAction, ParsingError};
+use crate::protocol::{ClientAction};
 
 #[derive(Copy, Clone)]
 pub enum State {

@@ -1,5 +1,5 @@
 use crate::handler::command::{CommandHandler, Handler, State};
-use crate::protocol::{Action, ClientAction, ParsingError};
+use crate::protocol::{Action, ClientAction};
 use std::ops::{Deref, DerefMut};
 use crate::resources::Resource;
 
