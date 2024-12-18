@@ -187,7 +187,7 @@ impl Server {
             Action::Login(team_name) => {
                 //todo! gui team
                 let pending_client = self.pending_clients.remove(&action.client_id);
-                let Some(pending_client) = pending_client else {
+                let Some(mut pending_client) = pending_client else {
                     unreachable!("Client should be in pending_clients");
                 };
                 let team = self.teams.get_mut(&team_name);

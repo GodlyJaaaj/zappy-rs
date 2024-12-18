@@ -43,5 +43,5 @@ pub enum Action {
 }
 
 pub trait Ko {
-    async fn ko(&self) -> bool;
+    async fn ko(&mut self) -> bool;
 }

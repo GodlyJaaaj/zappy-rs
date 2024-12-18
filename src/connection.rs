@@ -1,6 +1,6 @@
 use crate::handler::command::{CommandHandler, State};
 use crate::handler::login::LoginHandler;
-use crate::protocol::{Action, ClientAction, ClientType};
+use crate::protocol::{Action, ClientAction, ClientType, Ko};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -87,9 +87,17 @@ impl Connection {
     ) -> Result<(), ConnectionError> {
         tokio::select! {
             cmd = self.read_line() => {
-                let line = cmd?;
-                let action = self.command_handler.handle_command(line).unwrap();
-                tx.send(action).await.expect("Could not send action");
+                let mut line = cmd?;
+                line.pop();
+                let action = self.command_handler.handle_command(line);
+                match action.action {
+                    Action::Ko => {
+                        self.ko().await;
+                    }
+                    _ => {
+                        tx.send(action).await.expect("Could not send action");
+                    }
+                }
                 Ok(())
             }
             res = rx.recv() => {
@@ -108,5 +116,12 @@ impl Connection {
                 Ok(())
             }
         }
+    }
+}
+
+impl Ko for Connection {
+    async fn ko(&mut self) -> bool {
+        let _ = self.stream.write_all(b"ko\n").await;
+        true
     }
 }

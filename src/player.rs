@@ -39,7 +39,7 @@ impl Player {
 }
 
 impl Ko for Player {
-    async fn ko(&self) -> bool {
+    async fn ko(&mut self) -> bool {
         self.client_tx.send(
             ClientAction {
                 client_id: self.id(),

@@ -19,7 +19,7 @@ impl PendingClient {
 }
 
 impl Ko for PendingClient {
-    async fn ko(&self) -> bool {
+    async fn ko(&mut self) -> bool {
         self.client_tx.send(
             ClientAction {
                 client_id: self.id(),

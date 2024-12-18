@@ -8,7 +8,7 @@ pub enum State {
 }
 
 pub trait CommandHandler {
-    fn handle_command(&mut self, command: String) -> Result<ClientAction, ParsingError>;
+    fn handle_command(&mut self, command: String) -> ClientAction;
     fn state(&self) -> State;
     fn id(&self) -> u64;
 }

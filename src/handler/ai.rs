@@ -13,96 +13,48 @@ impl AiHandler {
         })
     }
 
-    fn validate_cmd(&self,  cmd_name: &str, args: &str) -> Result<Action, ParsingError> {
+    fn validate_cmd(&self,  cmd_name: &str, args: &str) -> Action {
         match cmd_name {
-            "Forward" => {
-                if args.is_empty() {
-                    Ok(Action::Forward)
-                } else {
-                    Err(ParsingError::InvalidAction)
-                }
+            "Forward" if args.is_empty() => {
+                    Action::Forward
             }
-            "Broadcast" => {
-                if args.is_empty() {
-                    Err(ParsingError::InvalidAction)
-                } else {
-                    Ok(Action::Broadcast(args.into()))
-                }
+            "Broadcast" if !args.is_empty() => {
+                    Action::Broadcast(args.into())
             }
-            "Right" => {
-                if args.is_empty() {
-                    Err(ParsingError::InvalidAction)
-                } else {
-                    Ok(Action::Right)
-                }
+            "Right" if !args.is_empty() => {
+                    Action::Right
             }
-            "Left" => {
-                if args.is_empty() {
-                    Err(ParsingError::InvalidAction)
-                } else {
-                    Ok(Action::Left)
-                }
+            "Left" if !args.is_empty() => {
+                    Action::Left
             }
-            "Look" => {
-                if args.is_empty() {
-                    Ok(Action::Look)
-                } else {
-                    Err(ParsingError::InvalidAction)
-                }
+            "Look" if args.is_empty() => {
+                    Action::Look
             }
-            "Inventory" => {
-                if args.is_empty() {
-                    Ok(Action::Inventory)
-                } else {
-                    Err(ParsingError::InvalidAction)
-                }
+            "Inventory" if args.is_empty() => {
+                    Action::Inventory
             }
-            "Connect_nbr" => {
-                if args.is_empty() {
-                    Ok(Action::ConnectNbr)
-                } else {
-                    Err(ParsingError::InvalidAction)
-                }
+            "Connect_nbr" if args.is_empty() => {
+                    Action::ConnectNbr
             }
-            "Fork" => {
-                if args.is_empty() {
-                    Ok(Action::Fork)
-                } else {
-                    Err(ParsingError::InvalidAction)
-                }
+            "Fork" if args.is_empty() => {
+                    Action::Fork
             }
-            "Eject" => {
-                if args.is_empty() {
-                    Ok(Action::Eject)
-                } else {
-                    Err(ParsingError::InvalidAction)
-                }
+            "Eject" if args.is_empty() => {
+                Action::Eject
             }
-            "Take" => {
-                if args.is_empty() {
-                    Err(ParsingError::InvalidAction)
-                } else {
+            "Take" if !args.is_empty() => {
                     //todo: Parse resource arg
-                    Ok(Action::Take(Resource::Food))
-                }
+                    Action::Take(Resource::Food)
             }
-            "Set" => {
-                if args.is_empty() {
-                    Err(ParsingError::InvalidAction)
-                } else {
+            "Set" if !args.is_empty() => {
                     //todo: Parse resource arg
-                    Ok(Action::Set(Resource::Food))
-                }
+                    Action::Set(Resource::Food)
             }
-            "Incantation" => {
-                if args.is_empty() {
-                    Ok(Action::Incantation)
-                } else {
-                    Err(ParsingError::InvalidAction)
-                }
+            "Incantation" if args.is_empty() => {
+                    Action::Incantation
             }
             &_ => {
-                Err(ParsingError::InvalidAction)
+                Action::Ko
             }
         }
     }
@@ -122,26 +74,23 @@ impl DerefMut for AiHandler {
     }
 }
 
+fn split_command(full_cmd: &str) -> (&str, &str) {
+    match full_cmd.split_once(' ') {
+        Some((cmd_name, args)) => (cmd_name, args),
+        None => (full_cmd, ""),
+    }
+}
+
 impl CommandHandler for AiHandler {
-    fn handle_command(&mut self, full_cmd: String) -> Result<ClientAction, ParsingError> {
-        let split_cmd = full_cmd.split_once(' ');
-        if split_cmd.is_none() {
-            return Ok(ClientAction {
-                client_id: self.id(),
-                action: Action::Ko
-            });
-        }
-        let cmd_name = split_cmd.unwrap().0;
-        let args = split_cmd.unwrap().1;
+    fn handle_command(&mut self, full_cmd: String) -> ClientAction {
+        let split_cmd = split_command(&full_cmd);
+        let cmd_name = split_cmd.0;
+        let args = split_cmd.1;
 
         let parse_res = self.validate_cmd(cmd_name, args);
-        if let Ok(action) = parse_res {
-            Ok(ClientAction {
-                client_id: self.id(),
-                action
-            })
-        } else {
-            Err(ParsingError::InvalidAction)
+        ClientAction {
+            client_id: self.id(),
+            action: parse_res,
         }
     }
 

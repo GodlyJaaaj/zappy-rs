@@ -29,13 +29,12 @@ impl DerefMut for LoginHandler {
 }
 
 impl CommandHandler for LoginHandler {
-    fn handle_command(&mut self, mut team_name: String) -> Result<ClientAction, ParsingError> {
-        team_name.pop(); // remove the newline char
+    fn handle_command(&mut self, team_name: String) -> ClientAction {
         let action = ClientAction {
             client_id: self.id(),
             action: Login(team_name),
         };
-        Ok(action)
+        action
     }
 
     fn state(&self) -> State {
