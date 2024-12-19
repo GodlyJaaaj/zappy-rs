@@ -20,11 +20,12 @@ impl PendingClient {
 
 impl Ko for PendingClient {
     async fn ko(&mut self) -> bool {
-        self.client_tx.send(
-            ClientAction {
+        self.client_tx
+            .send(ClientAction {
                 client_id: self.id(),
                 action: crate::protocol::Action::Ko,
-            }
-        ).await.is_ok()
+            })
+            .await
+            .is_ok()
     }
 }

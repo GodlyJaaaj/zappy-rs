@@ -1,6 +1,6 @@
 use crate::handler::command::{CommandHandler, Handler, State};
 use crate::protocol::Action::Login;
-use crate::protocol::{ClientAction};
+use crate::protocol::ClientAction;
 use std::ops::{Deref, DerefMut};
 
 pub struct LoginHandler(Handler);

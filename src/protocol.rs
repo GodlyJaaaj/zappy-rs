@@ -1,4 +1,6 @@
+use crate::player::Direction;
 use crate::resources::Resource;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum ParsingError {
@@ -10,18 +12,18 @@ pub struct ClientAction {
     pub action: Action,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ClientType {
     GUI,
     AI,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Action {
     Ko,
 
     //Game Action
-    Broadcast(String),
+    Broadcast(Direction, Arc<String>),
     Forward,
     Right,
     Left,
@@ -39,7 +41,7 @@ pub enum Action {
     Login(String),
     LoggedIn(ClientType, u64, (u8, u8)), // (number of slots available, (width, height) of the map)
 
-    //GUI Action
+                                         //GUI Action
 }
 
 pub trait Ko {

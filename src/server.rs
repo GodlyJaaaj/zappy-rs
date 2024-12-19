@@ -162,20 +162,54 @@ impl Server {
         println!("Processing action {:?}", action.action);
         match action.action {
             Action::LoggedIn(_, _, _) => unreachable!("Thread should not send LoggedIn action"),
-            Action::Ko => { unreachable!("Client should not send Ko action") }
-            Action::Broadcast(_) => { todo!("Implement broadcast") }
-            Action::Forward => { todo!("Implement forward") }
-            Action::Right => { todo!("Implement right") }
-            Action::Left => { todo!("Implement left") }
-            Action::Look => { todo!("Implement look") }
-            Action::Inventory => { todo!("Implement inventory") }
-            Action::ConnectNbr => { todo!("Implement connect_nbr") }
-            Action::Fork => { todo!("Implement fork") }
-            Action::Eject => { todo!("Implement eject") }
-            Action::Take(_) => { todo!("Implement take") }
-            Action::Set(_) => { todo!("Implement set") }
-            Action::Incantation => { todo!("Implement incantation") }
-
+            Action::Ko => {
+                unreachable!("Client should not send Ko action")
+            }
+            Action::Broadcast(dir, message) => {
+                //for team in self.teams.values_mut() {
+                //    for player in team.players.iter_mut() {
+                //        player.send(
+                //            ClientAction {
+                //                client_id: player.id(),
+                //                action: Action::Broadcast(d.clone())
+                //            }
+                //        ).await;
+                //    }
+                //}
+            }
+            Action::Forward => {
+                todo!("Implement forward")
+            }
+            Action::Right => {
+                todo!("Implement right")
+            }
+            Action::Left => {
+                todo!("Implement left")
+            }
+            Action::Look => {
+                todo!("Implement look")
+            }
+            Action::Inventory => {
+                todo!("Implement inventory")
+            }
+            Action::ConnectNbr => {
+                todo!("Implement connect_nbr")
+            }
+            Action::Fork => {
+                todo!("Implement fork")
+            }
+            Action::Eject => {
+                todo!("Implement eject")
+            }
+            Action::Take(_) => {
+                todo!("Implement take")
+            }
+            Action::Set(_) => {
+                todo!("Implement set")
+            }
+            Action::Incantation => {
+                todo!("Implement incantation")
+            }
 
             Action::Disconnect => {
                 self.pending_clients.remove(&action.client_id); // ensure client is removed
@@ -193,7 +227,8 @@ impl Server {
                 let team = self.teams.get_mut(&team_name);
                 let Some(team) = team else {
                     pending_client.ko().await;
-                    self.pending_clients.insert(action.client_id, pending_client);
+                    self.pending_clients
+                        .insert(action.client_id, pending_client);
                     return;
                 };
                 let player = Player::new(team_name.clone(), pending_client);

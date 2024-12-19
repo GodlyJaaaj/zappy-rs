@@ -1,10 +1,10 @@
+use crate::handler::ai::AiHandler;
 use crate::handler::command::{CommandHandler, State};
 use crate::handler::login::LoginHandler;
 use crate::protocol::{Action, ClientAction, ClientType, Ko};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use crate::handler::ai::AiHandler;
 
 pub struct Connection {
     stream: BufReader<TcpStream>,
@@ -71,8 +71,7 @@ impl Connection {
             }
             Action::Ko => {
                 println!("Login failed");
-                let _ = self.stream
-                    .write_all(b"ko\n").await;
+                let _ = self.stream.write_all(b"ko\n").await;
             }
             _ => {
                 println!("Unexpected action: {:?}", res.action);

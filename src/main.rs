@@ -12,6 +12,7 @@ mod player;
 mod protocol;
 mod resources;
 mod server;
+mod sound;
 mod team;
 mod vec2;
 

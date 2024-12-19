@@ -1,7 +1,9 @@
 use crate::handler::command::{CommandHandler, Handler, State};
+use crate::player::Direction;
 use crate::protocol::{Action, ClientAction};
-use std::ops::{Deref, DerefMut};
 use crate::resources::Resource;
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 pub struct AiHandler(Handler);
 
@@ -13,48 +15,26 @@ impl AiHandler {
         })
     }
 
-    fn validate_cmd(&self,  cmd_name: &str, args: &str) -> Action {
-        match cmd_name {
-            "Forward" if args.is_empty() => {
-                    Action::Forward
+    fn validate_cmd(&self, cmd_name: &str, args: &str) -> Action {
+        if args.is_empty() {
+            match cmd_name {
+                "Forward" => Action::Forward,
+                "Right" => Action::Right,
+                "Left" => Action::Left,
+                "Look" => Action::Look,
+                "Inventory" => Action::Inventory,
+                "Connect_nbr" => Action::ConnectNbr,
+                "Fork" => Action::Fork,
+                "Eject" => Action::Eject,
+                "Incantation" => Action::Incantation,
+                &_ => Action::Ko,
             }
-            "Broadcast" if !args.is_empty() => {
-                    Action::Broadcast(args.into())
-            }
-            "Right" if !args.is_empty() => {
-                    Action::Right
-            }
-            "Left" if !args.is_empty() => {
-                    Action::Left
-            }
-            "Look" if args.is_empty() => {
-                    Action::Look
-            }
-            "Inventory" if args.is_empty() => {
-                    Action::Inventory
-            }
-            "Connect_nbr" if args.is_empty() => {
-                    Action::ConnectNbr
-            }
-            "Fork" if args.is_empty() => {
-                    Action::Fork
-            }
-            "Eject" if args.is_empty() => {
-                Action::Eject
-            }
-            "Take" if !args.is_empty() => {
-                    //todo: Parse resource arg
-                    Action::Take(Resource::Food)
-            }
-            "Set" if !args.is_empty() => {
-                    //todo: Parse resource arg
-                    Action::Set(Resource::Food)
-            }
-            "Incantation" if args.is_empty() => {
-                    Action::Incantation
-            }
-            &_ => {
-                Action::Ko
+        } else {
+            match cmd_name {
+                "Broadcast" => Action::Broadcast(Direction::North, Arc::new(args.into())),
+                "Take" => Action::Take(Resource::Food),
+                "Set" => Action::Set(Resource::Food),
+                &_ => Action::Ko,
             }
         }
     }

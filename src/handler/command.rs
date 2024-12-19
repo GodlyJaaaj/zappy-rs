@@ -1,4 +1,4 @@
-use crate::protocol::{ClientAction};
+use crate::protocol::ClientAction;
 
 #[derive(Copy, Clone)]
 pub enum State {
@@ -13,7 +13,7 @@ pub trait CommandHandler {
     fn id(&self) -> u64;
 }
 
-pub struct Handler { 
-    pub(crate) id: u64, 
+pub struct Handler {
+    pub(crate) id: u64,
     pub(crate) state: State,
 }
