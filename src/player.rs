@@ -12,25 +12,6 @@ pub enum Direction {
     East,
     South,
     West,
-    NorthEast,
-    SouthWest,
-    NorthWest,
-    SouthEast,
-}
-
-impl Direction {
-    pub(crate) fn to_radians(&self) -> f64 {
-        match self {
-            Direction::North => 0.0,
-            Direction::East => std::f64::consts::FRAC_PI_2,
-            Direction::South => std::f64::consts::PI,
-            Direction::West => std::f64::consts::PI + std::f64::consts::FRAC_PI_2,
-            Direction::NorthEast => std::f64::consts::FRAC_PI_4,
-            Direction::SouthWest => std::f64::consts::PI + std::f64::consts::FRAC_PI_4,
-            Direction::NorthWest => std::f64::consts::PI + std::f64::consts::FRAC_PI_4,
-            Direction::SouthEast => std::f64::consts::FRAC_PI_4,
-        }
-    }
 }
 
 impl Direction {
