@@ -65,6 +65,14 @@ impl Connection {
                     //if the client logged in as AI
                     ClientType::AI => {
                         println!("Logged in as AI");
+                        self.stream
+                            .write_all(
+                                format!("{}\n{} {}\n", nb_clients, map_size.x(), map_size.y())
+                                    .as_bytes(),
+                            )
+                            .await
+                            .expect("Could not write to stream");
+
                         self.command_handler = Box::new(AiHandler::new(self.command_handler.id()));
                     }
                 }
@@ -106,7 +114,8 @@ impl Connection {
                         self.login_state(res).await;
                     }
                     State::Ai => {
-                        todo!("Implement Ai state in connection::update");
+                        println!("{:?}", res.action);
+                        //todo!("Implement Ai state in connection::update");
                     }
                     State::Gui => {
                         todo!("Implement Gui state");

@@ -32,6 +32,7 @@ impl From<(u64, u64)> for Vec2<u64> {
 }
 
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]

@@ -15,20 +15,20 @@ pub enum Resource {
 
 #[derive(Default, Clone)]
 pub struct Resources {
-    contents: [u64; Resource::Food as usize],
+    contents: [u64; Resource::Food as usize + 1],
 }
 
 impl Index<Resource> for Resources {
     type Output = u64;
 
     fn index(&self, index: Resource) -> &Self::Output {
-        return &self.contents[index as usize];
+        &self.contents[index as usize]
     }
 }
 
 impl IndexMut<Resource> for Resources {
     fn index_mut(&mut self, index: Resource) -> &mut Self::Output {
-        return &mut self.contents[index as usize];
+        &mut self.contents[index as usize]
     }
 }
 

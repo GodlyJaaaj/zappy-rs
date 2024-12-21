@@ -1,5 +1,4 @@
 use crate::handler::command::{CommandHandler, Handler, State};
-use crate::player::Direction;
 use crate::protocol::{Action, ClientAction};
 use crate::resources::Resource;
 use std::ops::{Deref, DerefMut};
@@ -31,7 +30,7 @@ impl AiHandler {
             }
         } else {
             match cmd_name {
-                "Broadcast" => Action::Broadcast(Direction::North, Arc::new(args.into())),
+                "Broadcast" => Action::Broadcast(0, Arc::new(args.into())),
                 "Take" => Action::Take(Resource::Food),
                 "Set" => Action::Set(Resource::Food),
                 &_ => Action::Ko,

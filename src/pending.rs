@@ -1,6 +1,7 @@
 use crate::protocol::{ClientAction, Ko};
 use tokio::sync::mpsc::Sender;
 
+#[derive(Debug)]
 pub struct PendingClient {
     pub client_id: u64,
     pub client_tx: Sender<ClientAction>,

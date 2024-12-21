@@ -27,7 +27,7 @@ impl Direction {
 
 #[derive(Clone, Debug)]
 pub struct Player {
-    team: String,
+    team: u64,
     id: u64,
     inventory: Resources,
     pos: Position,
@@ -38,7 +38,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(team: String, pending_client: PendingClient) -> Self {
+    pub fn new(team: u64, pending_client: PendingClient) -> Self {
         Player {
             team,
             id: pending_client.id(),
@@ -49,6 +49,14 @@ impl Player {
             satiety: 10, // todo!
             client_tx: pending_client.client_tx(),
         }
+    }
+
+    pub fn direction(&self) -> Direction {
+        self.direction.clone()
+    }
+
+    pub fn pos(&self) -> Position {
+        self.pos
     }
 
     pub fn id(&self) -> u64 {

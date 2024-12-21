@@ -2,7 +2,8 @@ use crate::connection::Connection;
 use crate::map::Map;
 use crate::pending::PendingClient;
 use crate::player::Player;
-use crate::protocol::{Action, ClientAction, Ko};
+use crate::protocol::{Action, ClientAction, ClientType, Ko};
+use crate::sound::get_sound_direction;
 use crate::team::Team;
 use crate::vec2::Size;
 use std::collections::HashMap;
@@ -58,8 +59,9 @@ pub struct Server {
     freq: u64,
     map: Map,
     max_clients: u64,
-    teams: HashMap<String, Team>,
+    teams: HashMap<u64, Team>,
     pending_clients: HashMap<u64, PendingClient>,
+    clients: HashMap<u64, Player>,
 }
 
 #[derive(Debug)]
@@ -85,12 +87,11 @@ impl Server {
         let tick_interval = time::interval(time::Duration::from_nanos(
             (1_000_000_000f64 / config.freq as f64) as u64,
         ));
-        let mut teams = HashMap::new();
-        for team in config.teams {
-            teams.insert(
-                team.clone(),
-                Team::new(teams.len(), team, config.clients_nb),
-            );
+
+        let mut teams: HashMap<u64, Team> = HashMap::new();
+
+        for (team_id, team) in config.teams.into_iter().enumerate() {
+            teams.insert(team_id as u64, Team::new(team_id as u64, team));
         }
 
         Ok(Server {
@@ -102,6 +103,7 @@ impl Server {
             max_clients: config.clients_nb,
             teams,
             pending_clients: HashMap::new(),
+            clients: HashMap::new(),
         })
     }
 
@@ -138,7 +140,10 @@ impl Server {
     fn accept_client(&mut self, socket: TcpStream, addr: SocketAddr) {
         static CLIENT_ID: AtomicU64 = AtomicU64::new(0);
         let client_id = CLIENT_ID.fetch_add(1, Ordering::Relaxed);
-        println!("Accepted connection from {:?}", socket);
+        println!(
+            "Accepted connection from {:?} with id {}",
+            socket, client_id
+        );
         let server_tx = self.thread_channel.tx.clone();
         let (client_tx, client_rx) = mpsc::channel::<ClientAction>(32);
         self.pending_clients.insert(
@@ -158,6 +163,20 @@ impl Server {
         //println!("Server tick!");
     }
 
+    async fn add_player(&mut self, player: Player) {
+        player
+            .send(ClientAction {
+                client_id: player.id(),
+                action: Action::LoggedIn(
+                    ClientType::AI,
+                    0, // todo! calculate number of eggs
+                    self.map.size(),
+                ),
+            })
+            .await;
+        self.clients.insert(player.id(), player);
+    }
+
     async fn process_events(&mut self, action: ClientAction) {
         println!("Processing action {:?}", action.action);
         match action.action {
@@ -166,16 +185,22 @@ impl Server {
                 unreachable!("Client should not send Ko action")
             }
             Action::Broadcast(dir, message) => {
-                //for team in self.teams.values_mut() {
-                //    for player in team.players.iter_mut() {
-                //        player.send(
-                //            ClientAction {
-                //                client_id: player.id(),
-                //                action: Action::Broadcast(d.clone())
-                //            }
-                //        ).await;
-                //    }
-                //}
+                // get the player that sent the broadcast
+                let Some(emitter) = self.clients.get(&action.client_id) else {
+                    unreachable!("Client should be in clients");
+                };
+                for receiver in self.clients.values() {
+                    if receiver.id() != action.client_id {
+                        let dir =
+                            get_sound_direction(emitter.into(), receiver.into(), self.map.size());
+                        receiver
+                            .send(ClientAction {
+                                client_id: receiver.id(),
+                                action: Action::Broadcast(dir, message.clone()),
+                            })
+                            .await;
+                    }
+                }
             }
             Action::Forward => {
                 todo!("Implement forward")
@@ -213,10 +238,9 @@ impl Server {
 
             Action::Disconnect => {
                 self.pending_clients.remove(&action.client_id); // ensure client is removed
-                for team in self.teams.values_mut() {
-                    team.players
-                        .retain(|player| player.id() != action.client_id);
-                }
+                self.clients.remove(&action.client_id); // ensure client is removed
+                println!("{:?}", self.pending_clients);
+                println!("{:?}", self.clients);
             }
             Action::Login(team_name) => {
                 //todo! gui team
@@ -224,15 +248,18 @@ impl Server {
                 let Some(mut pending_client) = pending_client else {
                     unreachable!("Client should be in pending_clients");
                 };
-                let team = self.teams.get_mut(&team_name);
+                let team = self
+                    .teams
+                    .values_mut()
+                    .find(|team| team.name() == team_name);
                 let Some(team) = team else {
                     pending_client.ko().await;
                     self.pending_clients
                         .insert(action.client_id, pending_client);
                     return;
                 };
-                let player = Player::new(team_name.clone(), pending_client);
-                team.add_player(player, self.map.size()).await;
+                let player = Player::new(team.id(), pending_client);
+                self.add_player(player).await;
             }
         }
     }

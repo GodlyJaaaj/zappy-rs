@@ -1,5 +1,5 @@
-use crate::player::Direction;
 use crate::resources::Resource;
+use crate::vec2::Size;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -23,7 +23,7 @@ pub enum Action {
     Ko,
 
     //Game Action
-    Broadcast(Direction, Arc<String>),
+    Broadcast(u8, Arc<String>),
     Forward,
     Right,
     Left,
@@ -39,9 +39,9 @@ pub enum Action {
     //Server Action
     Disconnect,
     Login(String),
-    LoggedIn(ClientType, u64, (u8, u8)), // (number of slots available, (width, height) of the map)
+    LoggedIn(ClientType, u64, Size), // (number of slots available, (width, height) of the map)
 
-                                         //GUI Action
+                                     //GUI Action
 }
 
 pub trait Ko {
