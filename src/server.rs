@@ -144,6 +144,7 @@ impl Server {
             "Accepted connection from {:?} with id {}",
             socket, client_id
         );
+        let _ = socket.try_write(b"WELCOME\n");
         let server_tx = self.thread_channel.tx.clone();
         let (client_tx, client_rx) = mpsc::channel::<ClientAction>(32);
         self.pending_clients.insert(
@@ -244,8 +245,17 @@ impl Server {
             Action::Look => {
                 todo!("Implement look")
             }
-            Action::Inventory => {
-                todo!("Implement inventory")
+            Action::Inventory(_) => {
+                let player = self.clients.get(&action.client_id);
+                let Some(player) = player else {
+                    return;
+                };
+                player
+                    .send(ClientAction {
+                        client_id: player.id(),
+                        action: Action::Inventory(player.inventory()),
+                    })
+                    .await;
             }
             Action::ConnectNbr => {
                 todo!("Implement connect_nbr")

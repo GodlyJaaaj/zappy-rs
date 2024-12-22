@@ -69,6 +69,10 @@ impl Player {
         }
     }
 
+    pub fn inventory(&self) -> Resources {
+        self.inventory.clone()
+    }
+
     pub fn direction(&self) -> Direction {
         self.direction.clone()
     }

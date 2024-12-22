@@ -13,7 +13,7 @@ pub enum Resource {
     Food, // Keep this last.
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, PartialEq)]
 pub struct Resources {
     contents: [u64; Resource::Food as usize + 1],
 }

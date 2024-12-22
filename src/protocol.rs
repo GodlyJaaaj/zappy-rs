@@ -1,4 +1,4 @@
-use crate::resources::Resource;
+use crate::resources::{Resource, Resources};
 use crate::vec2::Size;
 use std::sync::Arc;
 
@@ -29,7 +29,7 @@ pub enum Action {
     Right,
     Left,
     Look,
-    Inventory,
+    Inventory(Resources),
     ConnectNbr,
     Fork,
     Eject,

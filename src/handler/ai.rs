@@ -1,6 +1,6 @@
 use crate::handler::command::{CommandHandler, HandleCommandResult, Handler, State};
 use crate::protocol::{Action, ClientAction};
-use crate::resources::Resource;
+use crate::resources::{Resource, Resources};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
@@ -21,7 +21,7 @@ impl AiHandler {
                 "Right" => Action::Right,
                 "Left" => Action::Left,
                 "Look" => Action::Look,
-                "Inventory" => Action::Inventory,
+                "Inventory" => Action::Inventory(Resources::default()),
                 "Connect_nbr" => Action::ConnectNbr,
                 "Fork" => Action::Fork,
                 "Eject" => Action::Eject,
@@ -83,20 +83,21 @@ impl CommandHandler for AiHandler {
                 }
                 HandleCommandResult::Ok(format!("message {}, {}\n", dir, message))
             }
-            Action::Forward => {
-                todo!("Implement forward")
-            }
-            Action::Right => {
-                todo!("Implement right")
-            }
-            Action::Left => {
-                todo!("Implement left")
-            }
             Action::Look => {
                 todo!("Implement look")
             }
-            Action::Inventory => {
-                todo!("Implement inventory")
+            Action::Inventory(inv) => {
+                let inv_str = format!(
+                    "[deraumere {}, linemate {}, mendiane {}, phiras {}, sibur {}, thystame {}, food {}]\n",
+                    inv[Resource::Deraumere],
+                    inv[Resource::Linemate],
+                    inv[Resource::Mendiane],
+                    inv[Resource::Phiras],
+                    inv[Resource::Sibur],
+                    inv[Resource::Thystame],
+                    inv[Resource::Food]
+                );
+                HandleCommandResult::Ok(inv_str)
             }
             Action::ConnectNbr => {
                 todo!("Implement connect_nbr")
