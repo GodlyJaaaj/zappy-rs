@@ -1,7 +1,7 @@
 use crate::handler::ai::AiHandler;
-use crate::handler::command::{CommandHandler, State};
+use crate::handler::command::{CommandHandler, HandleCommandResult, State};
 use crate::handler::login::LoginHandler;
-use crate::protocol::{Action, ClientAction, ClientType, Ko};
+use crate::protocol::{Action, ClientAction, Ko};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -53,72 +53,57 @@ impl Connection {
         }
     }
 
-    async fn login_state(&mut self, res: ClientAction) {
-        match res.action {
-            Action::LoggedIn(t, nb_clients, map_size) => {
-                match t {
-                    //if the client logged in as GUI
-                    ClientType::GUI => {
-                        println!("Logged in as GUI");
-                        todo!("Implement GUI state");
-                    }
-                    //if the client logged in as AI
-                    ClientType::AI => {
-                        println!("Logged in as AI");
-                        self.stream
-                            .write_all(
-                                format!("{}\n{} {}\n", nb_clients, map_size.x(), map_size.y())
-                                    .as_bytes(),
-                            )
-                            .await
-                            .expect("Could not write to stream");
-
-                        self.command_handler = Box::new(AiHandler::new(self.command_handler.id()));
-                    }
-                }
-            }
-            Action::Ko => {
-                println!("Login failed");
-                let _ = self.stream.write_all(b"ko\n").await;
-            }
-            _ => {
-                println!("Unexpected action: {:?}", res.action);
-            }
-        }
-    }
-
     async fn update(
         &mut self,
         tx: &mpsc::Sender<ClientAction>,
         rx: &mut mpsc::Receiver<ClientAction>,
     ) -> Result<(), ConnectionError> {
         tokio::select! {
+            biased;
+            res = rx.recv() => {
+                let res = res.expect("Should never happen");
+                match self.command_handler.handle_command(res) {
+                    HandleCommandResult::Ok(str) => {
+                        match self.stream.write_all(str.as_bytes()).await {
+                            Ok(_) => {}
+                            Err(e) => {
+                                return Err(ConnectionError::IO(e));
+                            }
+                        }
+                    }
+                    HandleCommandResult::ChangeState(response, new_state) => {
+                        match new_state {
+                            State::Ai => {
+                                match self.stream.write_all(response.as_bytes()).await {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        return Err(ConnectionError::IO(e));
+                                    }
+                                }
+                                self.command_handler = Box::new(AiHandler::new(self.command_handler.id()));
+                            }
+                            State::Gui => {
+                                todo!("Implement GUI state");
+                            }
+                            _ => {
+                                unreachable!("Should not land here");
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }
+
             cmd = self.read_line() => {
                 let mut line = cmd?;
                 line.pop();
-                let action = self.command_handler.handle_command(line);
+                let action = self.command_handler.parse_command(line);
                 match action.action {
                     Action::Ko => {
                         self.ko().await;
                     }
                     _ => {
-                        tx.send(action).await.expect("Could not send action");
-                    }
-                }
-                Ok(())
-            }
-            res = rx.recv() => {
-                let res = res.expect("Could not receive action from channel");
-                match self.command_handler.state() {
-                    State::Login => {
-                        self.login_state(res).await;
-                    }
-                    State::Ai => {
-                        println!("{:?}", res.action);
-                        //todo!("Implement Ai state in connection::update");
-                    }
-                    State::Gui => {
-                        todo!("Implement Gui state");
+                        tx.send(action).await.expect("Should never happen");
                     }
                 }
                 Ok(())

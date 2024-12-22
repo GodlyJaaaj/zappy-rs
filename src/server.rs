@@ -190,16 +190,14 @@ impl Server {
                     unreachable!("Client should be in clients");
                 };
                 for receiver in self.clients.values() {
-                    if receiver.id() != action.client_id {
-                        let dir =
-                            get_sound_direction(emitter.into(), receiver.into(), self.map.size());
-                        receiver
-                            .send(ClientAction {
-                                client_id: receiver.id(),
-                                action: Action::Broadcast(dir, message.clone()),
-                            })
-                            .await;
-                    }
+                    let dir =
+                        get_sound_direction(emitter.into(), receiver.into(), self.map.size());
+                    receiver
+                        .send(ClientAction {
+                            client_id: emitter.id(),
+                            action: Action::Broadcast(dir, message.clone()),
+                        })
+                        .await;
                 }
             }
             Action::Forward => {
@@ -246,7 +244,8 @@ impl Server {
                 //todo! gui team
                 let pending_client = self.pending_clients.remove(&action.client_id);
                 let Some(mut pending_client) = pending_client else {
-                    unreachable!("Client should be in pending_clients");
+                    //client disconnected in between
+                    return;
                 };
                 let team = self
                     .teams

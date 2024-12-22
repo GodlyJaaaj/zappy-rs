@@ -1,4 +1,4 @@
-use crate::handler::command::{CommandHandler, Handler, State};
+use crate::handler::command::{CommandHandler, HandleCommandResult, Handler, State};
 use crate::protocol::{Action, ClientAction};
 use crate::resources::Resource;
 use std::ops::{Deref, DerefMut};
@@ -61,7 +61,7 @@ fn split_command(full_cmd: &str) -> (&str, &str) {
 }
 
 impl CommandHandler for AiHandler {
-    fn handle_command(&mut self, full_cmd: String) -> ClientAction {
+    fn parse_command(&mut self, full_cmd: String) -> ClientAction {
         let split_cmd = split_command(&full_cmd);
         let cmd_name = split_cmd.0;
         let args = split_cmd.1;
@@ -70,6 +70,56 @@ impl CommandHandler for AiHandler {
         ClientAction {
             client_id: self.id(),
             action: parse_res,
+        }
+    }
+
+    fn handle_command(&mut self, command: ClientAction) -> HandleCommandResult {
+        match command.action {
+            Action::Ko => {
+                HandleCommandResult::Ok("ko\n".to_string())
+            }
+            Action::Broadcast(dir, message) => {
+                if self.id() == command.client_id {
+                    return HandleCommandResult::Ok("ok\n".to_string());
+                }
+                HandleCommandResult::Ok(format!("message {}, {}\n", dir, message))
+            }
+            Action::Forward => {
+                todo!("Implement forward")
+            }
+            Action::Right => {
+                todo!("Implement right")
+            }
+            Action::Left => {
+                todo!("Implement left")
+            }
+            Action::Look => {
+                todo!("Implement look")
+            }
+            Action::Inventory => {
+                todo!("Implement inventory")
+            }
+            Action::ConnectNbr => {
+                todo!("Implement connect_nbr")
+            }
+            Action::Fork => {
+                todo!("Implement fork")
+            }
+            Action::Eject => {
+                todo!("Implement eject")
+            }
+            Action::Take(_) => {
+                todo!("Implement take")
+            }
+            Action::Set(_) => {
+                todo!("Implement set")
+            }
+            Action::Incantation => {
+                todo!("Implement incantation")
+            }
+            _ => {
+                todo!("should not be there")
+            }
         }
     }
 

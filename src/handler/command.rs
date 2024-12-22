@@ -7,8 +7,14 @@ pub enum State {
     Gui,
 }
 
+pub enum HandleCommandResult {
+    Ok(String),
+    ChangeState(String, State),
+}
+
 pub trait CommandHandler {
-    fn handle_command(&mut self, command: String) -> ClientAction;
+    fn parse_command(&mut self, command: String) -> ClientAction;
+    fn handle_command(&mut self, command: ClientAction) -> HandleCommandResult;
     fn state(&self) -> State;
     fn id(&self) -> u64;
 }
