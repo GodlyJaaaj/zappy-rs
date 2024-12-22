@@ -1,7 +1,7 @@
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Vec2<T> {
-    x: T,
-    y: T,
+    pub(crate) x: T,
+    pub(crate) y: T,
 }
 
 /// A position in the game

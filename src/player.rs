@@ -2,7 +2,7 @@ use crate::pending::PendingClient;
 use crate::protocol;
 use crate::protocol::{ClientAction, Ko};
 use crate::resources::Resources;
-use crate::vec2::Position;
+use crate::vec2::{Position, Size};
 use rand::random;
 use tokio::sync::mpsc;
 
@@ -21,6 +21,24 @@ impl Direction {
             1 => Direction::East,
             2 => Direction::South,
             _ => Direction::West,
+        }
+    }
+
+    pub fn rotate_right(&mut self) {
+        *self = match self {
+            Direction::North => Direction::East,
+            Direction::East => Direction::South,
+            Direction::South => Direction::West,
+            Direction::West => Direction::North,
+        }
+    }
+
+    pub fn rotate_left(&mut self) {
+        *self = match self {
+            Direction::North => Direction::West,
+            Direction::East => Direction::North,
+            Direction::South => Direction::East,
+            Direction::West => Direction::South,
         }
     }
 }
@@ -55,8 +73,30 @@ impl Player {
         self.direction.clone()
     }
 
+    pub fn direction_mut(&mut self) -> &mut Direction {
+        &mut self.direction
+    }
+
     pub fn pos(&self) -> Position {
         self.pos
+    }
+
+    pub fn pos_mut(&mut self) -> &mut Position {
+        &mut self.pos
+    }
+
+    pub fn move_forward(&mut self, map_size: &Size) {
+        match self.direction {
+            Direction::North => self.move_player(0, 1, map_size),
+            Direction::East => self.move_player(1, 0, map_size),
+            Direction::South => self.move_player(0, -1, map_size),
+            Direction::West => self.move_player(-1, 0, map_size),
+        }
+    }
+
+    pub fn move_player(&mut self, dx: isize, dy: isize, map_size: &Size) {
+        self.pos.x = (self.pos.x() as isize + dx).rem_euclid(map_size.x() as isize) as u64;
+        self.pos.y = (self.pos.y() as isize + dy).rem_euclid(map_size.y() as isize) as u64;
     }
 
     pub fn id(&self) -> u64 {
@@ -77,5 +117,24 @@ impl Ko for Player {
             })
             .await
             .is_ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_direction_rotate_right() {
+        let mut direction = Direction::North;
+        direction.rotate_right();
+        assert_eq!(direction, Direction::East);
+    }
+
+    #[tokio::test]
+    async fn test_direction_rotate_left() {
+        let mut direction = Direction::North;
+        direction.rotate_left();
+        assert_eq!(direction, Direction::West);
     }
 }

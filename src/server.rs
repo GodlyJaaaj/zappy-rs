@@ -181,6 +181,9 @@ impl Server {
         println!("Processing action {:?}", action.action);
         match action.action {
             Action::LoggedIn(_, _, _) => unreachable!("Thread should not send LoggedIn action"),
+            Action::Ok => {
+                unreachable!("Client should not send Ok action")
+            }
             Action::Ko => {
                 unreachable!("Client should not send Ko action")
             }
@@ -190,8 +193,7 @@ impl Server {
                     unreachable!("Client should be in clients");
                 };
                 for receiver in self.clients.values() {
-                    let dir =
-                        get_sound_direction(emitter.into(), receiver.into(), self.map.size());
+                    let dir = get_sound_direction(emitter.into(), receiver.into(), self.map.size());
                     receiver
                         .send(ClientAction {
                             client_id: emitter.id(),
@@ -201,13 +203,43 @@ impl Server {
                 }
             }
             Action::Forward => {
-                todo!("Implement forward")
+                let player = self.clients.get_mut(&action.client_id);
+                let Some(player) = player else {
+                    return;
+                };
+                player.move_forward(&self.map.size());
+                player
+                    .send(ClientAction {
+                        client_id: player.id(),
+                        action: Action::Ok,
+                    })
+                    .await;
             }
             Action::Right => {
-                todo!("Implement right")
+                let player = self.clients.get_mut(&action.client_id);
+                let Some(player) = player else {
+                    return;
+                };
+                player.direction_mut().rotate_right();
+                player
+                    .send(ClientAction {
+                        client_id: player.id(),
+                        action: Action::Ok,
+                    })
+                    .await;
             }
             Action::Left => {
-                todo!("Implement left")
+                let player = self.clients.get_mut(&action.client_id);
+                let Some(player) = player else {
+                    return;
+                };
+                player.direction_mut().rotate_left();
+                player
+                    .send(ClientAction {
+                        client_id: player.id(),
+                        action: Action::Ok,
+                    })
+                    .await;
             }
             Action::Look => {
                 todo!("Implement look")
@@ -233,7 +265,6 @@ impl Server {
             Action::Incantation => {
                 todo!("Implement incantation")
             }
-
             Action::Disconnect => {
                 self.pending_clients.remove(&action.client_id); // ensure client is removed
                 self.clients.remove(&action.client_id); // ensure client is removed

@@ -20,6 +20,7 @@ pub enum ClientType {
 
 #[derive(Debug, PartialEq)]
 pub enum Action {
+    Ok,
     Ko,
 
     //Game Action

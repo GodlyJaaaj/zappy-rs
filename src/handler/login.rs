@@ -55,9 +55,7 @@ impl CommandHandler for LoginHandler {
                     }
                 }
             }
-            Action::Ko => {
-                HandleCommandResult::Ok("ko\n".to_string())
-            }
+            Action::Ko => HandleCommandResult::Ok("ko\n".to_string()),
             _ => {
                 println!("Unexpected action: {:?}", command.action);
                 HandleCommandResult::Ok("ko\n".to_string())

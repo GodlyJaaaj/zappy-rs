@@ -75,9 +75,8 @@ impl CommandHandler for AiHandler {
 
     fn handle_command(&mut self, command: ClientAction) -> HandleCommandResult {
         match command.action {
-            Action::Ko => {
-                HandleCommandResult::Ok("ko\n".to_string())
-            }
+            Action::Ok => HandleCommandResult::Ok("ok\n".to_string()),
+            Action::Ko => HandleCommandResult::Ok("ko\n".to_string()),
             Action::Broadcast(dir, message) => {
                 if self.id() == command.client_id {
                     return HandleCommandResult::Ok("ok\n".to_string());
