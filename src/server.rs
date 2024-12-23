@@ -3,6 +3,7 @@ use crate::map::Map;
 use crate::pending::PendingClient;
 use crate::player::Player;
 use crate::protocol::{Action, ClientAction, ClientType, Ko};
+use crate::resources::Resources;
 use crate::sound::get_sound_direction;
 use crate::team::Team;
 use crate::vec2::Size;
@@ -11,10 +12,10 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::{select, time};
-use crate::resources::{Resource, Resources};
 
 pub struct ServerConfig {
     addr: String,
@@ -119,9 +120,7 @@ impl Server {
     // phiras 0.08
     // thystame 0.05
     fn spawn_resources(&mut self) {
-        for i in 0..=8 {
-            
-        }
+        for i in 0..=8 {}
     }
 
     fn set_tick_interval(&mut self, freq: u16) {
@@ -154,14 +153,13 @@ impl Server {
         }
     }
 
-    fn accept_client(&mut self, socket: TcpStream, addr: SocketAddr) {
+    fn accept_client(&mut self, mut socket: TcpStream, addr: SocketAddr) {
         static CLIENT_ID: AtomicU64 = AtomicU64::new(0);
         let client_id = CLIENT_ID.fetch_add(1, Ordering::Relaxed);
         println!(
             "Accepted connection from {:?} with id {}",
             socket, client_id
         );
-        let _ = socket.try_write(b"WELCOME\n");
         let server_tx = self.thread_channel.tx.clone();
         let (client_tx, client_rx) = mpsc::channel::<ClientAction>(32);
         self.pending_clients.insert(
@@ -172,6 +170,7 @@ impl Server {
             },
         );
         tokio::spawn(async move {
+            let _ = socket.write(b"WELCOME\n").await;
             let mut client = Connection::new(client_id, socket);
             client.handle(server_tx, client_rx).await
         });
