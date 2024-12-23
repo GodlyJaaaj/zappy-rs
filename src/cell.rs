@@ -1,5 +1,5 @@
 use crate::egg::Egg;
-use crate::resources::Resources;
+use crate::resources::{Resource, Resources};
 use std::fmt;
 
 #[derive(Clone)]
@@ -24,5 +24,11 @@ const RESET: &str = "\x1b[0m";
 impl fmt::Display for Cell {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "({},{GREEN}{}{RESET})", self.resources, self.eggs.len())
+    }
+}
+
+impl Cell {
+    pub fn add_resource(&mut self, resource: Resource, amount: u64) {
+        self.resources[resource] += amount;
     }
 }

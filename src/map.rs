@@ -1,10 +1,25 @@
 use crate::cell::Cell;
 use crate::vec2::Size;
 use std::fmt;
+use std::ops::{Index, IndexMut};
 
 pub struct Map {
     size: Size,
     map: Vec<Vec<Cell>>,
+}
+
+impl Index<(u32, u32)> for Map {
+    type Output = Cell;
+
+    fn index(&self, index: (u32, u32)) -> &Self::Output {
+        &self.map[index.1 as usize][index.0 as usize]
+    }
+}
+
+impl IndexMut<(u32, u32)> for Map {
+    fn index_mut(&mut self, index: (u32, u32)) -> &mut Self::Output {
+        &mut self.map[index.1 as usize][index.0 as usize]
+    }
 }
 
 impl Map {

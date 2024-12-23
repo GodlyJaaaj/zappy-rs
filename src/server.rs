@@ -3,7 +3,7 @@ use crate::map::Map;
 use crate::pending::PendingClient;
 use crate::player::Player;
 use crate::protocol::{Action, ClientAction, ClientType, Ko};
-use crate::resources::Resources;
+use crate::resources::{Resource, Resources};
 use crate::sound::get_sound_direction;
 use crate::team::Team;
 use crate::vec2::Size;
@@ -12,6 +12,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
+use rand::Rng;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -64,7 +65,7 @@ pub struct Server {
     teams: HashMap<u64, Team>,
     pending_clients: HashMap<u64, PendingClient>,
     clients: HashMap<u64, Player>,
-    resource: Resources,
+    resources: Resources,
 }
 
 #[derive(Debug)]
@@ -107,7 +108,7 @@ impl Server {
             teams,
             pending_clients: HashMap::new(),
             clients: HashMap::new(),
-            resource: Resources::default(),
+            resources: Resources::default(),
         })
     }
 
@@ -120,7 +121,29 @@ impl Server {
     // phiras 0.08
     // thystame 0.05
     fn spawn_resources(&mut self) {
-        for i in 0..=8 {}
+        let total: u64 = self.map.size().x() * self.map.size().y();
+        let resources: [(Resource, u64); 7] = [
+            (Resource::Food, (0.5 * total as f64) as u64),
+            (Resource::Linemate, (0.3 * total as f64) as u64),
+            (Resource::Deraumere, (0.15 * total as f64) as u64),
+            (Resource::Sibur, (0.1 * total as f64) as u64),
+            (Resource::Mendiane, (0.1 * total as f64) as u64),
+            (Resource::Phiras, (0.08 * total as f64) as u64),
+            (Resource::Thystame, (0.05 * total as f64) as u64),
+        ];
+        
+        for res in Resource::iter() {
+            if self.resources[res] >= resources[res as usize].1 {
+                continue
+            }
+            let nb_missing = resources[res as usize].1 - self.resources[res];
+            for _ in 0..nb_missing {
+                let x = rand::rng().random_range(0..self.map.size().x());
+                let y = rand::rng().random_range(0..self.map.size().y());
+                self.map[(x as u32, y as u32)].add_resource(res, 1);
+            }
+            self.resources[res] += nb_missing;
+        }
     }
 
     fn set_tick_interval(&mut self, freq: u16) {
@@ -177,7 +200,8 @@ impl Server {
     }
 
     fn update(&mut self, _instant: time::Instant) {
-        //println!("Server tick!");
+        self.spawn_resources();
+        println!("map: {}", self.map);
     }
 
     async fn add_player(&mut self, player: Player) {

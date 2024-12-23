@@ -3,6 +3,7 @@ use std::fmt;
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
+#[derive(Clone, Copy)]
 pub enum Resource {
     Deraumere,
     Linemate,
@@ -11,6 +12,22 @@ pub enum Resource {
     Sibur,
     Thystame,
     Food, // Keep this last.
+}
+
+impl Resource {
+    pub fn iter() -> impl Iterator<Item = Resource> {
+        [
+            Resource::Deraumere,
+            Resource::Linemate,
+            Resource::Mendiane,
+            Resource::Phiras,
+            Resource::Sibur,
+            Resource::Thystame,
+            Resource::Food,
+        ]
+            .iter()
+            .cloned()
+    }
 }
 
 #[derive(Default, Clone, PartialEq)]
