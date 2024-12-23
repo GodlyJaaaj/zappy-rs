@@ -3,13 +3,13 @@ use crate::handler::command::{CommandHandler, HandleCommandResult, State};
 use crate::handler::login::LoginHandler;
 use crate::protocol::{Action, ClientAction, Ko};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::io::{AsyncReadExt, BufWriter};
+use tokio::io::{AsyncReadExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
 pub struct Connection {
     reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
-    writer: BufWriter<tokio::net::tcp::OwnedWriteHalf>,
+    writer: tokio::net::tcp::OwnedWriteHalf,
     command_handler: Box<dyn CommandHandler + Send>,
 }
 
@@ -24,7 +24,7 @@ impl Connection {
     pub fn new(id: u64, socket: TcpStream) -> Self {
         let (read_half, write_half) = socket.into_split();
         let reader = BufReader::new(read_half);
-        let writer = BufWriter::new(write_half);
+        let writer = write_half;
 
         Connection {
             reader,
