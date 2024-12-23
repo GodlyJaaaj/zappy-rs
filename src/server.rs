@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::{select, time};
+use crate::resources::{Resource, Resources};
 
 pub struct ServerConfig {
     addr: String,
@@ -62,6 +63,7 @@ pub struct Server {
     teams: HashMap<u64, Team>,
     pending_clients: HashMap<u64, PendingClient>,
     clients: HashMap<u64, Player>,
+    resource: Resources,
 }
 
 #[derive(Debug)]
@@ -104,7 +106,22 @@ impl Server {
             teams,
             pending_clients: HashMap::new(),
             clients: HashMap::new(),
+            resource: Resources::default(),
         })
+    }
+
+    // resource density
+    // food 0.5
+    // linemate 0.3
+    // deraumere 0.15
+    // sibur 0.1
+    // mendiane 0.1
+    // phiras 0.08
+    // thystame 0.05
+    fn spawn_resources(&mut self) {
+        for i in 0..=8 {
+            
+        }
     }
 
     fn set_tick_interval(&mut self, freq: u16) {
