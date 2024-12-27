@@ -1,15 +1,16 @@
 use crate::handler::ai::AiHandler;
-use crate::handler::command::{CommandHandler, HandleCommandResult, State};
+use crate::handler::command::{CommandHandler, State};
 use crate::handler::login::LoginHandler;
 use crate::protocol::{Action, ClientAction, Ko};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::io::{AsyncReadExt};
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
+use tokio::net::tcp::{OwnedWriteHalf, OwnedReadHalf};
 use tokio::sync::mpsc;
 
 pub struct Connection {
-    reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
-    writer: tokio::net::tcp::OwnedWriteHalf,
+    reader: BufReader<OwnedReadHalf>,
+    writer: OwnedWriteHalf,
     command_handler: Box<dyn CommandHandler + Send>,
 }
 
@@ -75,39 +76,23 @@ impl Connection {
     ) -> Result<(), ConnectionError> {
         tokio::select! {
             biased;
-            res = rx.recv() => {
-                let res = res.expect("Should never happen");
-                match self.command_handler.handle_command(res) {
-                    HandleCommandResult::Ok(str) => {
-                        match self.writer.write_all(str.as_bytes()).await {
-                            Ok(_) => {}
-                            Err(e) => {
-                                return Err(ConnectionError::IO(e));
-                            }
-                        }
-                    }
-                    HandleCommandResult::ChangeState(response, new_state) => {
-                        match new_state {
-                            State::Ai => {
-                                match self.writer.write_all(response.as_bytes()).await {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        return Err(ConnectionError::IO(e));
-                                    }
-                                }
-                                self.command_handler = Box::new(AiHandler::new(self.command_handler.id()));
-                            }
-                            State::Gui => {
-                                todo!("Implement GUI state");
-                            }
-                            _ => {
-                                unreachable!("Should not land here");
-                            }
-                        }
-                    }
-                }
-                Ok(())
-            }
+            request = rx.recv() => {
+                let mut state = State::Unchanged;
+		let response = self.command_handler.handle_command(request.unwrap(), &mut state);
+		if let Err(e) = self.writer.write_all(response.as_bytes()).await {
+		    return Err(ConnectionError::IO(e));
+		}
+		if state == State::Unchanged {
+		    return Ok(());
+		}
+		self.command_handler = match state {
+		    State::Unchanged => unreachable!(),
+		    State::Login => Box::new(LoginHandler::new(self.command_handler.id())),
+		    State::Ai => Box::new(AiHandler::new(self.command_handler.id())),
+		    State::Gui => todo!("Implement GUI state"),
+		};
+		Ok(())
+	    }
 
             cmd = self.read_line() => {
                 let mut line = match cmd {
@@ -126,7 +111,7 @@ impl Connection {
                         self.ko().await;
                     }
                     _ => {
-                        tx.send(action).await.expect("Should never happen");
+                        tx.send(action).await.unwrap();
                     }
                 }
                 Ok(())

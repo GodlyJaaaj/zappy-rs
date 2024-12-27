@@ -1,4 +1,4 @@
-use crate::handler::command::{CommandHandler, HandleCommandResult, Handler, State};
+use crate::handler::command::{CommandHandler, Handler, State};
 use crate::protocol::Action::Login;
 use crate::protocol::{Action, ClientAction, ClientType};
 use std::ops::{Deref, DerefMut};
@@ -36,29 +36,26 @@ impl CommandHandler for LoginHandler {
         }
     }
 
-    fn handle_command(&mut self, command: ClientAction) -> HandleCommandResult {
+    fn handle_command(&mut self, command: ClientAction, state: &mut State) -> String {
         match command.action {
             Action::LoggedIn(client_type, nb_clients, map_size) => {
                 match client_type {
-                    //if the client logged in as GUI
                     ClientType::GUI => {
                         println!("Logged in as GUI");
+			*state = State::Gui;
                         todo!("Implement GUI state");
                     }
-                    //if the client logged in as AI
                     ClientType::AI => {
                         println!("Logged in as AI");
-                        HandleCommandResult::ChangeState(
-                            format!("{}\n{} {}\n", nb_clients, map_size.x(), map_size.y()),
-                            State::Ai,
-                        )
+			*state = State::Ai;
+                        format!("{}\n{} {}\n", nb_clients, map_size.x(), map_size.y())
                     }
                 }
             }
-            Action::Ko => HandleCommandResult::Ok("ko\n".to_string()),
+            Action::Ko => "ko\n".to_string(),
             _ => {
                 println!("Unexpected action: {:?}", command.action);
-                HandleCommandResult::Ok("ko\n".to_string())
+                "ko\n".to_string()
             }
         }
     }

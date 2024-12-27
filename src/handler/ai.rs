@@ -1,4 +1,4 @@
-use crate::handler::command::{CommandHandler, HandleCommandResult, Handler, State};
+use crate::handler::command::{CommandHandler, Handler, State};
 use crate::protocol::{Action, ClientAction};
 use crate::resources::{Resource, Resources};
 use std::ops::{Deref, DerefMut};
@@ -73,21 +73,22 @@ impl CommandHandler for AiHandler {
         }
     }
 
-    fn handle_command(&mut self, command: ClientAction) -> HandleCommandResult {
+    fn handle_command(&mut self, command: ClientAction, state: &mut State) -> String {
         match command.action {
-            Action::Ok => HandleCommandResult::Ok("ok\n".to_string()),
-            Action::Ko => HandleCommandResult::Ok("ko\n".to_string()),
+            Action::Ok => "ok\n".to_string(),
+            Action::Ko => "ko\n".to_string(),
             Action::Broadcast(dir, message) => {
                 if self.id() == command.client_id {
-                    return HandleCommandResult::Ok("ok\n".to_string());
-                }
-                HandleCommandResult::Ok(format!("message {}, {}\n", dir, message))
+                    "ok\n".to_string()
+                } else {
+		    format!("message {}, {}\n", dir, message)
+		}
             }
             Action::Look => {
                 todo!("Implement look")
             }
             Action::Inventory(inv) => {
-                let inv_str = format!(
+                format!(
                     "[deraumere {}, linemate {}, mendiane {}, phiras {}, sibur {}, thystame {}, food {}]\n",
                     inv[Resource::Deraumere],
                     inv[Resource::Linemate],
@@ -96,8 +97,7 @@ impl CommandHandler for AiHandler {
                     inv[Resource::Sibur],
                     inv[Resource::Thystame],
                     inv[Resource::Food]
-                );
-                HandleCommandResult::Ok(inv_str)
+                )
             }
             Action::ConnectNbr => {
                 todo!("Implement connect_nbr")

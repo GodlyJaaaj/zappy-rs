@@ -1,20 +1,16 @@
 use crate::protocol::ClientAction;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum State {
+    Unchanged,
     Login,
     Ai,
     Gui,
 }
 
-pub enum HandleCommandResult {
-    Ok(String),
-    ChangeState(String, State),
-}
-
 pub trait CommandHandler {
     fn parse_command(&mut self, command: String) -> ClientAction;
-    fn handle_command(&mut self, command: ClientAction) -> HandleCommandResult;
+    fn handle_command(&mut self, command: ClientAction, state: &mut State) -> String;
     fn state(&self) -> State;
     fn id(&self) -> u64;
 }
