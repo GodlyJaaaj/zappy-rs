@@ -1,32 +1,20 @@
-use crate::protocol::{ClientAction, Ko};
+use crate::protocol::{ClientSender, HasId, Id, ServerResponse};
 use tokio::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub struct PendingClient {
     pub client_id: u64,
-    pub client_tx: Sender<ClientAction>,
+    pub client_tx: Sender<ServerResponse>,
 }
 
-impl PendingClient {
-    pub(crate) fn client_tx(&self) -> Sender<ClientAction> {
-        self.client_tx.clone()
-    }
-}
-
-impl PendingClient {
-    pub fn id(&self) -> u64 {
+impl HasId for PendingClient {
+    fn id(&self) -> Id {
         self.client_id
     }
 }
 
-impl Ko for PendingClient {
-    async fn ko(&mut self) -> bool {
-        self.client_tx
-            .send(ClientAction {
-                client_id: self.id(),
-                action: crate::protocol::Action::Ko,
-            })
-            .await
-            .is_ok()
+impl ClientSender for PendingClient {
+    fn get_client_tx(&self) -> &tokio::sync::mpsc::Sender<ServerResponse> {
+        &self.client_tx
     }
 }

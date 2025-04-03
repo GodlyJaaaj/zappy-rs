@@ -25,8 +25,8 @@ impl Resource {
             Resource::Thystame,
             Resource::Food,
         ]
-            .iter()
-            .cloned()
+        .iter()
+        .cloned()
     }
 }
 

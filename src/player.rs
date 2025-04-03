@@ -1,10 +1,9 @@
 use crate::pending::PendingClient;
-use crate::protocol;
-use crate::protocol::{ClientAction, Ko};
+use crate::protocol::{ClientSender, HasId, Id, ServerResponse};
 use crate::resources::Resources;
 use crate::vec2::{Position, Size};
 use rand::random;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Direction {
@@ -52,7 +51,7 @@ pub struct Player {
     direction: Direction,
     elevation: u8,
     satiety: u8,
-    client_tx: mpsc::Sender<ClientAction>,
+    client_tx: Sender<ServerResponse>,
 }
 
 impl Player {
@@ -65,7 +64,7 @@ impl Player {
             direction: Direction::new(),
             elevation: 1,
             satiety: 10, // todo!
-            client_tx: pending_client.client_tx(),
+            client_tx: pending_client.client_tx,
         }
     }
 
@@ -103,24 +102,20 @@ impl Player {
         self.pos.y = (self.pos.y() as isize + dy).rem_euclid(map_size.y() as isize) as u64;
     }
 
-    pub fn id(&self) -> u64 {
-        self.id
-    }
+    //pub async fn send(&self, action: ClientAction) {
+    //    let _ = self.client_tx.send(action).await;
+    //}
+}
 
-    pub async fn send(&self, action: ClientAction) {
-        let _ = self.client_tx.send(action).await;
+impl HasId for Player {
+    fn id(&self) -> Id {
+        self.id
     }
 }
 
-impl Ko for Player {
-    async fn ko(&mut self) -> bool {
-        self.client_tx
-            .send(ClientAction {
-                client_id: self.id(),
-                action: protocol::Action::Ko,
-            })
-            .await
-            .is_ok()
+impl ClientSender for Player {
+    fn get_client_tx(&self) -> &Sender<ServerResponse> {
+        &self.client_tx
     }
 }
 

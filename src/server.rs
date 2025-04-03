@@ -2,18 +2,18 @@ use crate::connection::Connection;
 use crate::map::Map;
 use crate::pending::PendingClient;
 use crate::player::Player;
-use crate::protocol::{Action, ClientAction, ClientType, Ko};
+use crate::protocol::PendingResponse::{LogAs, Shared};
+use crate::protocol::{AIAction, ClientSender, Event, EventType, HasId, Id, PendingAction, ServerResponse, SharedAction, SharedResponse, TeamType};
 use crate::resources::{Resource, Resources};
-use crate::sound::get_sound_direction;
 use crate::team::Team;
 use crate::vec2::Size;
+use log::{debug, info, warn};
+use rand::Rng;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use rand::Rng;
-use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::{select, time};
@@ -50,21 +50,21 @@ impl ServerConfig {
     }
 }
 
-pub struct ThreadChannel {
-    pub(crate) tx: mpsc::Sender<ClientAction>,
-    pub(crate) rx: mpsc::Receiver<ClientAction>,
+pub struct ThreadChannel<T> {
+    pub(crate) tx: mpsc::Sender<T>,
+    pub(crate) rx: mpsc::Receiver<T>,
 }
 
 pub struct Server {
-    thread_channel: ThreadChannel,
+    global_channel: ThreadChannel<EventType>,
     tick_interval: time::Interval,
     socket: TcpListener,
     freq: u64,
     map: Map,
     max_clients: u64,
-    teams: HashMap<u64, Team>,
-    pending_clients: HashMap<u64, PendingClient>,
-    clients: HashMap<u64, Player>,
+    teams: HashMap<Id, Team>,
+    pending_clients: HashMap<Id, PendingClient>,
+    clients: HashMap<Id, Player>,
     resources: Resources,
 }
 
@@ -87,19 +87,19 @@ impl Server {
         let socket = TcpListener::bind(addr)
             .await
             .map_err(|_| ServerError::FailedToBind)?;
-        let (tx, rx) = mpsc::channel::<ClientAction>(32);
+        let (tx, rx) = mpsc::channel::<EventType>(32);
         let tick_interval = time::interval(time::Duration::from_nanos(
             (1_000_000_000f64 / config.freq as f64) as u64,
         ));
 
-        let mut teams: HashMap<u64, Team> = HashMap::new();
+        let mut teams: HashMap<Id, Team> = HashMap::new();
 
         for (team_id, team) in config.teams.into_iter().enumerate() {
-            teams.insert(team_id as u64, Team::new(team_id as u64, team));
+            teams.insert(team_id as Id, Team::new(team_id as Id, team));
         }
 
         Ok(Server {
-            thread_channel: ThreadChannel { tx, rx },
+            global_channel: ThreadChannel { tx, rx },
             tick_interval,
             socket,
             freq: config.freq as u64,
@@ -131,10 +131,10 @@ impl Server {
             (Resource::Phiras, (0.08 * total as f64) as u64),
             (Resource::Thystame, (0.05 * total as f64) as u64),
         ];
-        
+
         for res in Resource::iter() {
             if self.resources[res] >= resources[res as usize].1 {
-                continue
+                continue;
             }
             let nb_missing = resources[res as usize].1 - self.resources[res];
             for _ in 0..nb_missing {
@@ -169,22 +169,23 @@ impl Server {
                     self.update(instant)
                 },
 
-                Some(res) = self.thread_channel.rx.recv() => {
+                Some(res) = self.global_channel.rx.recv() => {
                     self.process_events(res).await;
                 },
             }
         }
     }
 
-    fn accept_client(&mut self, mut socket: TcpStream, addr: SocketAddr) {
+    fn accept_client(&mut self, socket: TcpStream, addr: SocketAddr) {
         static CLIENT_ID: AtomicU64 = AtomicU64::new(0);
-        let client_id = CLIENT_ID.fetch_add(1, Ordering::Relaxed);
-        println!(
+        let client_id : Id = CLIENT_ID.fetch_add(1, Ordering::Relaxed);
+        info!(
             "Accepted connection from {:?} with id {}",
-            socket, client_id
+            socket.peer_addr().unwrap(),
+            client_id
         );
-        let server_tx = self.thread_channel.tx.clone();
-        let (client_tx, client_rx) = mpsc::channel::<ClientAction>(32);
+        let server_tx = self.global_channel.tx.clone();
+        let (client_tx, client_rx) = mpsc::channel::<ServerResponse>(32);
         self.pending_clients.insert(
             client_id,
             PendingClient {
@@ -193,154 +194,208 @@ impl Server {
             },
         );
         tokio::spawn(async move {
-            let _ = socket.write(b"WELCOME\n").await;
-            let mut client = Connection::new(client_id, socket);
-            client.handle(server_tx, client_rx).await
+            let mut client = Connection::new(client_id, socket, server_tx).await;
+            client.handle(client_rx).await
         });
     }
 
     fn update(&mut self, _instant: time::Instant) {
+        //info!("Updating");
         self.spawn_resources();
-        println!("map: {}", self.map);
+        //println!("map: {}", self.map);
     }
 
-    async fn add_player(&mut self, player: Player) {
-        player
-            .send(ClientAction {
-                client_id: player.id(),
-                action: Action::LoggedIn(
-                    ClientType::AI,
-                    0, // todo! calculate number of eggs
-                    self.map.size(),
-                ),
-            })
-            .await;
-        self.clients.insert(player.id(), player);
-    }
-
-    async fn process_events(&mut self, action: ClientAction) {
-        println!("Processing action {:?}", action.action);
-        match action.action {
-            Action::LoggedIn(_, _, _) => unreachable!("Thread should not send LoggedIn action"),
-            Action::Ok => {
-                unreachable!("Client should not send Ok action")
+    async fn process_events(&mut self, event: EventType) {
+        debug!("Event {:?}", event);
+        match event {
+            EventType::AI(Event { id, action }) => {
+                self.handle_ai_events((id, action)).await;
             }
-            Action::Ko => {
-                unreachable!("Client should not send Ko action")
+            EventType::GUI(Event { id, action }) => {
+                unreachable!()
             }
-            Action::Broadcast(dir, message) => {
-                // get the player that sent the broadcast
-                let Some(emitter) = self.clients.get(&action.client_id) else {
-                    unreachable!("Client should be in clients");
-                };
-                for receiver in self.clients.values() {
-                    let dir = get_sound_direction(emitter.into(), receiver.into(), self.map.size());
-                    receiver
-                        .send(ClientAction {
-                            client_id: emitter.id(),
-                            action: Action::Broadcast(dir, message.clone()),
-                        })
-                        .await;
-                }
-            }
-            Action::Forward => {
-                let player = self.clients.get_mut(&action.client_id);
-                let Some(player) = player else {
-                    return;
-                };
-                player.move_forward(&self.map.size());
-                player
-                    .send(ClientAction {
-                        client_id: player.id(),
-                        action: Action::Ok,
-                    })
-                    .await;
-            }
-            Action::Right => {
-                let player = self.clients.get_mut(&action.client_id);
-                let Some(player) = player else {
-                    return;
-                };
-                player.direction_mut().rotate_right();
-                player
-                    .send(ClientAction {
-                        client_id: player.id(),
-                        action: Action::Ok,
-                    })
-                    .await;
-            }
-            Action::Left => {
-                let player = self.clients.get_mut(&action.client_id);
-                let Some(player) = player else {
-                    return;
-                };
-                player.direction_mut().rotate_left();
-                player
-                    .send(ClientAction {
-                        client_id: player.id(),
-                        action: Action::Ok,
-                    })
-                    .await;
-            }
-            Action::Look => {
-                todo!("Implement look")
-            }
-            Action::Inventory(_) => {
-                let player = self.clients.get(&action.client_id);
-                let Some(player) = player else {
-                    return;
-                };
-                player
-                    .send(ClientAction {
-                        client_id: player.id(),
-                        action: Action::Inventory(player.inventory()),
-                    })
-                    .await;
-            }
-            Action::ConnectNbr => {
-                todo!("Implement connect_nbr")
-            }
-            Action::Fork => {
-                todo!("Implement fork")
-            }
-            Action::Eject => {
-                todo!("Implement eject")
-            }
-            Action::Take(_) => {
-                todo!("Implement take")
-            }
-            Action::Set(_) => {
-                todo!("Implement set")
-            }
-            Action::Incantation => {
-                todo!("Implement incantation")
-            }
-            Action::Disconnect => {
-                self.pending_clients.remove(&action.client_id); // ensure client is removed
-                self.clients.remove(&action.client_id); // ensure client is removed
-                println!("{:?}", self.pending_clients);
-                println!("{:?}", self.clients);
-            }
-            Action::Login(team_name) => {
-                //todo! gui team
-                let pending_client = self.pending_clients.remove(&action.client_id);
-                let Some(mut pending_client) = pending_client else {
-                    //client disconnected in between
-                    return;
-                };
-                let team = self
-                    .teams
-                    .values_mut()
-                    .find(|team| team.name() == team_name);
-                let Some(team) = team else {
-                    pending_client.ko().await;
-                    self.pending_clients
-                        .insert(action.client_id, pending_client);
-                    return;
-                };
-                let player = Player::new(team.id(), pending_client);
-                self.add_player(player).await;
+            EventType::Pending(Event { id, action }) => {
+                self.handle_pending_events((id, action)).await;
             }
         }
     }
+
+    async fn handle_pending_events(&mut self, (id, action): (Id, PendingAction)) {
+        let Some(client) = self.pending_clients.get_mut(&id) else {
+            warn!(
+                "This client is not pending anymore : {}, cancelled event {:?}",
+                id, action
+            );
+            return;
+        };
+
+        async fn send_ko(client: &mut impl ClientSender) {
+            client
+                .send_to_client(ServerResponse::Pending(Shared(SharedResponse::Ko)))
+                .await;
+        }
+
+        match action {
+            PendingAction::Shared(SharedAction::Disconnected) => {
+                self.pending_clients.remove_entry(&id);
+                info!("Pending client: {} disconnected", id);
+            }
+            PendingAction::Shared(SharedAction::InvalidAction) => unreachable!(),
+            PendingAction::Shared(SharedAction::ReachedTakeLimit) => {
+                warn!("Pending client: {} sent too much data", id);
+                send_ko(client).await;
+            }
+            PendingAction::Shared(SharedAction::InvalidEncoding) => {
+                warn!("Pending client: {} uses invalid encoding", id);
+                send_ko(client).await;
+            }
+            PendingAction::Login(team_name) => {
+                info!("Pending client {} logged in with team {}", id, team_name);
+
+                let Some(team) = self.teams.values().find(|team| team.name() == team_name) else {
+                    send_ko(client).await;
+                    return;
+                };
+
+                let pending_client = self.pending_clients.remove(&id).unwrap();
+                let player = Player::new(team.id(), pending_client);
+                player
+                    .send_to_client(ServerResponse::Pending(LogAs(TeamType::IA(
+                        team_name,
+                        0,
+                        (0, 0).into(),
+                    ))))
+                    .await;
+
+                self.clients.insert(player.id(), player);
+            }
+        }
+    }
+
+    async fn handle_ai_events(&mut self, (id, action): (Id, AIAction)) {
+        todo!()
+    }
 }
+
+//match action.action {
+//             Action::LoggedIn(_, _, _) => unreachable!("Thread should not send LoggedIn action"),
+//             Action::Ok => {
+//                 unreachable!("Client should not send Ok action")
+//             }
+//             Action::Ko => {
+//                 unreachable!("Client should not send Ko action")
+//             }
+//             Action::Broadcast(dir, message) => {
+//                 // get the player that sent the broadcast
+//                 let Some(emitter) = self.clients.get(&action.client_id) else {
+//                     unreachable!("Client should be in clients");
+//                 };
+//                 for receiver in self.clients.values() {
+//                     let dir = get_sound_direction(emitter.into(), receiver.into(), self.map.size());
+//                     receiver
+//                         .send(ClientAction {
+//                             client_id: emitter.id(),
+//                             action: Action::Broadcast(dir, message.clone()),
+//                         })
+//                         .await;
+//                 }
+//             }
+//             Action::Forward => {
+//                 let player = self.clients.get_mut(&action.client_id);
+//                 let Some(player) = player else {
+//                     return;
+//                 };
+//                 player.move_forward(&self.map.size());
+//                 player
+//                     .send(ClientAction {
+//                         client_id: player.id(),
+//                         action: Action::Ok,
+//                     })
+//                     .await;
+//             }
+//             Action::Right => {
+//                 let player = self.clients.get_mut(&action.client_id);
+//                 let Some(player) = player else {
+//                     return;
+//                 };
+//                 player.direction_mut().rotate_right();
+//                 player
+//                     .send(ClientAction {
+//                         client_id: player.id(),
+//                         action: Action::Ok,
+//                     })
+//                     .await;
+//             }
+//             Action::Left => {
+//                 let player = self.clients.get_mut(&action.client_id);
+//                 let Some(player) = player else {
+//                     return;
+//                 };
+//                 player.direction_mut().rotate_left();
+//                 player
+//                     .send(ClientAction {
+//                         client_id: player.id(),
+//                         action: Action::Ok,
+//                     })
+//                     .await;
+//             }
+//             Action::Look => {
+//                 todo!("Implement look")
+//             }
+//             Action::Inventory(_) => {
+//                 let player = self.clients.get(&action.client_id);
+//                 let Some(player) = player else {
+//                     return;
+//                 };
+//                 player
+//                     .send(ClientAction {
+//                         client_id: player.id(),
+//                         action: Action::Inventory(player.inventory()),
+//                     })
+//                     .await;
+//             }
+//             Action::ConnectNbr => {
+//                 todo!("Implement connect_nbr")
+//             }
+//             Action::Fork => {
+//                 todo!("Implement fork")
+//             }
+//             Action::Eject => {
+//                 todo!("Implement eject")
+//             }
+//             Action::Take(_) => {
+//                 todo!("Implement take")
+//             }
+//             Action::Set(_) => {
+//                 todo!("Implement set")
+//             }
+//             Action::Incantation => {
+//                 todo!("Implement incantation")
+//             }
+//             Action::Disconnect => {
+//                 self.pending_clients.remove(&action.client_id); // ensure client is removed
+//                 self.clients.remove(&action.client_id); // ensure client is removed
+//                 println!("{:?}", self.pending_clients);
+//                 println!("{:?}", self.clients);
+//             }
+//             Action::Login(team_name) => {
+//                 //todo! gui team
+//                 let pending_client = self.pending_clients.remove(&action.client_id);
+//                 let Some(mut pending_client) = pending_client else {
+//                     //client disconnected in between
+//                     return;
+//                 };
+//                 let team = self
+//                     .teams
+//                     .values_mut()
+//                     .find(|team| team.name() == team_name);
+//                 let Some(team) = team else {
+//                     pending_client.ko().await;
+//                     self.pending_clients
+//                         .insert(action.client_id, pending_client);
+//                     return;
+//                 };
+//                 let player = Player::new(team.id(), pending_client);
+//                 self.add_player(player).await;
+//             }
+//         }

@@ -15,12 +15,15 @@ mod server;
 mod sound;
 mod team;
 mod vec2;
+mod event;
 
 use crate::server::{Server, ServerConfig};
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+
     let server_config = ServerConfig::new(
         "0.0.0.0".to_string(),
         4242,

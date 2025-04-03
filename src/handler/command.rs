@@ -1,21 +1,21 @@
-use crate::protocol::ClientAction;
+use crate::protocol::{EventType, HasId, ServerResponse, SharedAction};
 
-#[derive(Copy, Clone, PartialEq)]
 pub enum State {
-    Unchanged,
-    Login,
-    Ai,
-    Gui,
+    IA(String),
+    GUI(String),
 }
 
-pub trait CommandHandler {
-    fn parse_command(&mut self, command: String) -> ClientAction;
-    fn handle_command(&mut self, command: ClientAction, state: &mut State) -> String;
-    fn state(&self) -> State;
-    fn id(&self) -> u64;
+pub enum CommandRes {
+    ChangeState(State),
+    Response(String),
+}
+
+pub trait CommandHandler : HasId {
+    fn parse_command(&mut self, command: String) -> EventType;
+    fn handle_command(&mut self, command: ServerResponse) -> CommandRes;
+    fn create_shared_event(&self, action: SharedAction) -> EventType;
 }
 
 pub struct Handler {
     pub(crate) id: u64,
-    pub(crate) state: State,
 }
