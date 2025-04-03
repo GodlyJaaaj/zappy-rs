@@ -1,9 +1,14 @@
 use crate::connection::Connection;
+use crate::event::Event;
+use crate::event::EventScheduler;
 use crate::map::Map;
 use crate::pending::PendingClient;
 use crate::player::Player;
 use crate::protocol::PendingResponse::{LogAs, Shared};
-use crate::protocol::{AIAction, ClientSender, Event, EventType, HasId, Id, PendingAction, ServerResponse, SharedAction, SharedResponse, TeamType};
+use crate::protocol::{
+    AIAction, ClientSender, EventType, GameEvent, HasId, Id, PendingAction, ServerResponse,
+    SharedAction, SharedResponse, TeamType,
+};
 use crate::resources::{Resource, Resources};
 use crate::team::Team;
 use crate::vec2::Size;
@@ -66,6 +71,7 @@ pub struct Server {
     pending_clients: HashMap<Id, PendingClient>,
     clients: HashMap<Id, Player>,
     resources: Resources,
+    event_scheduler: EventScheduler<Event>,
 }
 
 #[derive(Debug)]
@@ -109,6 +115,7 @@ impl Server {
             pending_clients: HashMap::new(),
             clients: HashMap::new(),
             resources: Resources::default(),
+            event_scheduler: EventScheduler::new(),
         })
     }
 
@@ -178,7 +185,7 @@ impl Server {
 
     fn accept_client(&mut self, socket: TcpStream, addr: SocketAddr) {
         static CLIENT_ID: AtomicU64 = AtomicU64::new(0);
-        let client_id : Id = CLIENT_ID.fetch_add(1, Ordering::Relaxed);
+        let client_id: Id = CLIENT_ID.fetch_add(1, Ordering::Relaxed);
         info!(
             "Accepted connection from {:?} with id {}",
             socket.peer_addr().unwrap(),
@@ -200,21 +207,38 @@ impl Server {
     }
 
     fn update(&mut self, _instant: time::Instant) {
-        //info!("Updating");
+        info!("Updating current tick {:?}", self.event_scheduler.current_tick());
         self.spawn_resources();
-        //println!("map: {}", self.map);
+        let expired_events = self.event_scheduler.tick();
+        for event in expired_events {
+            // do or ignore event if dead
+            match event {
+                Event::Broadcast(_) => {}
+                Event::Forward => {}
+                Event::Right => {}
+                Event::Left => {}
+                Event::Look => {}
+                Event::Inventory => {}
+                Event::ConnectNbr => {}
+                Event::Fork => {}
+                Event::Eject => {}
+                Event::Take(_) => {}
+                Event::Set(_) => {}
+                Event::Incantation => {}
+            }
+        }
     }
 
     async fn process_events(&mut self, event: EventType) {
         debug!("Event {:?}", event);
         match event {
-            EventType::AI(Event { id, action }) => {
+            EventType::AI(GameEvent { id, action }) => {
                 self.handle_ai_events((id, action)).await;
             }
-            EventType::GUI(Event { id, action }) => {
+            EventType::GUI(GameEvent { id, action }) => {
                 unreachable!()
             }
-            EventType::Pending(Event { id, action }) => {
+            EventType::Pending(GameEvent { id, action }) => {
                 self.handle_pending_events((id, action)).await;
             }
         }
@@ -259,6 +283,7 @@ impl Server {
 
                 let pending_client = self.pending_clients.remove(&id).unwrap();
                 let player = Player::new(team.id(), pending_client);
+                warn!("hardcoded info at login");
                 player
                     .send_to_client(ServerResponse::Pending(LogAs(TeamType::IA(
                         team_name,
@@ -273,7 +298,45 @@ impl Server {
     }
 
     async fn handle_ai_events(&mut self, (id, action): (Id, AIAction)) {
-        todo!()
+        match action {
+            AIAction::Shared(shared) => {
+                match shared {
+                    SharedAction::Disconnected => {
+                        todo!()
+                    }
+                    SharedAction::InvalidAction
+                    | SharedAction::ReachedTakeLimit
+                    | SharedAction::InvalidEncoding => {
+                        //schedule ko to 0 ticks
+                        todo!()
+                    }
+                }
+            }
+            AIAction::Action(action) => match action {
+                event @ (Event::Broadcast(_)
+                | Event::Forward
+                | Event::Right
+                | Event::Left
+                | Event::Look
+                | Event::Take(_)
+                | Event::Set(_)
+                | Event::Eject) => {
+                    self.event_scheduler.schedule(event, 7, id);
+                }
+                event @ Event::Inventory => {
+                    self.event_scheduler.schedule(event, 1, id);
+                }
+                event @ Event::ConnectNbr => {
+                    self.event_scheduler.schedule(event, 0, id);
+                }
+                event @ Event::Fork => {
+                    self.event_scheduler.schedule(event, 42, id);
+                }
+                event @ Event::Incantation => {
+                    todo!()
+                }
+            },
+        }
     }
 }
 

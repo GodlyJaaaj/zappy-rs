@@ -1,7 +1,7 @@
+use crate::event::Event::*;
 use crate::handler::command::{CommandHandler, CommandRes, Handler};
 use crate::protocol::{AIAction, AIEvent, EventType, HasId, Id, ServerResponse, SharedAction};
 use crate::resources::Resource;
-use std::ops::{Deref, DerefMut};
 
 pub struct AiHandler(Handler);
 
@@ -13,20 +13,26 @@ impl AiHandler {
     fn validate_cmd(&self, cmd_name: &str, args: &str) -> EventType {
         let action = match (cmd_name, args.is_empty()) {
             // Commandes sans arguments
-            ("Forward", true) => AIAction::Forward,
-            ("Right", true) => AIAction::Right,
-            ("Left", true) => AIAction::Left,
-            ("Look", true) => AIAction::Look,
-            ("Inventory", true) => AIAction::Inventory,
-            ("Connect_nbr", true) => AIAction::ConnectNbr,
-            ("Fork", true) => AIAction::Fork,
-            ("Eject", true) => AIAction::Eject,
-            ("Incantation", true) => AIAction::Incantation,
+            ("Forward", true) => AIAction::Action(Forward),
+            ("Right", true) => AIAction::Action(Right),
+            ("Left", true) => AIAction::Action(Left),
+            ("Look", true) => AIAction::Action(Look),
+            ("Inventory", true) => AIAction::Action(Inventory),
+            ("Connect_nbr", true) => AIAction::Action(ConnectNbr),
+            ("Fork", true) => AIAction::Action(Fork),
+            ("Eject", true) => AIAction::Action(Eject),
+            ("Incantation", true) => AIAction::Action(Incantation),
 
             // Commandes avec arguments
-            ("Broadcast", false) => AIAction::Broadcast(args.to_string()),
-            ("Take", false) => parse_resource(&args.to_lowercase()).map_or(AIAction::Shared(SharedAction::InvalidAction), AIAction::Take),
-            ("Set", false) => parse_resource(&args.to_lowercase()).map_or(AIAction::Shared(SharedAction::InvalidAction), AIAction::Set),
+            ("Broadcast", false) => AIAction::Action(Broadcast(args.to_string())),
+            ("Take", false) => parse_resource(&args.to_lowercase())
+                .map_or(AIAction::Shared(SharedAction::InvalidAction), |res| {
+                    AIAction::Action(Take(res))
+                }),
+            ("Set", false) => parse_resource(&args.to_lowercase())
+                .map_or(AIAction::Shared(SharedAction::InvalidAction), |res| {
+                    AIAction::Action(Set(res))
+                }),
 
             // Cas par défaut
             _ => AIAction::Shared(SharedAction::InvalidAction),
@@ -52,20 +58,6 @@ fn parse_resource(resource_name: &str) -> Option<Resource> {
     }
 }
 
-impl Deref for AiHandler {
-    type Target = Handler;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for AiHandler {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 fn split_command(full_cmd: &str) -> (&str, &str) {
     match full_cmd.split_once(' ') {
         Some((cmd_name, args)) => (cmd_name, args),
@@ -75,7 +67,7 @@ fn split_command(full_cmd: &str) -> (&str, &str) {
 
 impl HasId for AiHandler {
     fn id(&self) -> Id {
-        self.id
+        self.0.id
     }
 }
 
@@ -94,7 +86,7 @@ impl CommandHandler for AiHandler {
 
     fn create_shared_event(&self, action: SharedAction) -> EventType {
         EventType::AI(AIEvent {
-            id: self.id,
+            id: self.id(),
             action: AIAction::Shared(action),
         })
     }

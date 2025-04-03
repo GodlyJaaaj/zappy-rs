@@ -93,7 +93,9 @@ impl Connection {
             RecvError::ReachedTakeLimit => SharedAction::ReachedTakeLimit,
         };
 
-        self.server_tx.send(self.command_handler.create_shared_event(action)).await?;
+        self.server_tx
+            .send(self.command_handler.create_shared_event(action))
+            .await?;
 
         if matches!(e, RecvError::Closed) {
             Err(ConnectionError::Disconnected)
@@ -102,7 +104,10 @@ impl Connection {
         }
     }
 
-    async fn update(&mut self, client_rx: &mut Receiver<ServerResponse>) -> Result<(), ConnectionError> {
+    async fn update(
+        &mut self,
+        client_rx: &mut Receiver<ServerResponse>,
+    ) -> Result<(), ConnectionError> {
         tokio::select! {
             biased;
 
@@ -118,6 +123,10 @@ impl Connection {
                     }
                     CommandRes::Response(res) => {
                         self.send_response(res).await?;
+                    },
+                    CommandRes::ChangeState(State::DEAD(res)) => {
+                        self.send_response(res).await?;
+                        return Err(ConnectionError::ForciblyClosedByServer);
                     }
                 }
                 Ok(())

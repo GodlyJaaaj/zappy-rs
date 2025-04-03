@@ -1,8 +1,10 @@
 use crate::handler::command::CommandRes::ChangeState;
 use crate::handler::command::{CommandHandler, CommandRes, Handler, State};
-use crate::protocol::{EventType, HasId, Id, PendingAction, PendingEvent, PendingResponse, ServerResponse, SharedAction, SharedResponse, TeamType};
+use crate::protocol::{
+    EventType, HasId, Id, PendingAction, PendingEvent, PendingResponse, ServerResponse,
+    SharedAction, SharedResponse, TeamType,
+};
 use log::warn;
-use std::ops::{Deref, DerefMut};
 
 pub struct LoginHandler(Handler);
 
@@ -12,30 +14,16 @@ impl LoginHandler {
     }
 }
 
-impl Deref for LoginHandler {
-    type Target = Handler;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for LoginHandler {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 impl HasId for LoginHandler {
     fn id(&self) -> Id {
-        self.id
+        self.0.id
     }
 }
 
 impl CommandHandler for LoginHandler {
     fn parse_command(&mut self, team_name: String) -> EventType {
         EventType::Pending(PendingEvent {
-            id: self.id,
+            id: self.id(),
             action: PendingAction::Login(team_name),
         })
     }
@@ -88,7 +76,7 @@ impl CommandHandler for LoginHandler {
 
     fn create_shared_event(&self, action: SharedAction) -> EventType {
         EventType::Pending(PendingEvent {
-            id: self.id,
+            id: self.id(),
             action: PendingAction::Shared(action),
         })
     }

@@ -14,7 +14,7 @@ impl HasId for PendingClient {
 }
 
 impl ClientSender for PendingClient {
-    fn get_client_tx(&self) -> &tokio::sync::mpsc::Sender<ServerResponse> {
+    fn get_client_tx(&self) -> &Sender<ServerResponse> {
         &self.client_tx
     }
 }

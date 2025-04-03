@@ -1,19 +1,39 @@
 use crate::protocol::Id;
+use crate::resources::Resource;
 use log::debug;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use std::fmt::Debug;
 
+#[derive(Debug)]
+pub enum Event {
+    Broadcast(String),
+    Forward,
+    Right,
+    Left,
+    Look,
+    Inventory,
+    ConnectNbr,
+    Fork,
+    Eject,
+    Take(Resource),
+    Set(Resource),
+    Incantation,
+}
+
 #[derive(Debug, Clone)]
 pub struct TimedEvent<T> {
     pub data: T,
     pub event_id: Id,
+    pub player_id: Id,
     pub expiration_tick: u64,
 }
 
 impl<T> Ord for TimedEvent<T> {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.expiration_tick.cmp(&self.expiration_tick)
+        other
+            .expiration_tick
+            .cmp(&self.expiration_tick)
             .then_with(|| other.event_id.cmp(&self.event_id))
     }
 }
@@ -26,18 +46,31 @@ impl<T> PartialOrd for TimedEvent<T> {
 
 impl<T> PartialEq for TimedEvent<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.expiration_tick == other.expiration_tick &&
-            self.event_id == other.event_id
+        self.expiration_tick == other.expiration_tick && self.event_id == other.event_id
     }
 }
 
 impl<T> Eq for TimedEvent<T> {}
 
+struct PlayerState {
+    nb_events: u64,
+    last_action_tick: u64,
+}
+
+impl PlayerState {
+    fn new(nb_events: u64, last_action_tick: u64) -> Self {
+        Self {
+            nb_events,
+            last_action_tick,
+        }
+    }
+}
+
 pub struct EventScheduler<T> {
     events: BinaryHeap<TimedEvent<T>>,
     current_tick: u64,
     next_event_id: Id,
-    //players_states: HashMap<Id, >
+    players_states: HashMap<Id, PlayerState>,
 }
 
 impl<T> EventScheduler<T> {
@@ -46,21 +79,46 @@ impl<T> EventScheduler<T> {
             events: BinaryHeap::new(),
             current_tick: 0,
             next_event_id: 0,
+            players_states: HashMap::new(),
         }
     }
 
-    pub fn schedule(&mut self, data: T, ticks_from_now: u64) -> Id {
+    pub fn del_player(&mut self, player_id: Id) {
+        self.players_states.remove(&player_id);
+    }
+
+    pub fn schedule(&mut self, data: T, event_ticks: u64, player_id: Id) -> Id {
         let event_id = self.next_event_id;
         self.next_event_id += 1;
 
-        let expiration_tick = self.current_tick + ticks_from_now;
+        let expiration_tick: u64 = if let Some(state) = self.players_states.get_mut(&player_id) {
+            if state.nb_events > 0 {
+                state.last_action_tick += event_ticks;
+                state.nb_events += 1;
+                state.last_action_tick
+            } else {
+                state.last_action_tick = self.current_tick + event_ticks;
+                state.nb_events += 1;
+                state.last_action_tick
+            }
+        } else {
+            let expiration_tick = self.current_tick + event_ticks;
+            let state = PlayerState::new(1, expiration_tick);
+            self.players_states.insert(player_id, state);
+            expiration_tick
+        };
+
         let event = TimedEvent {
             data,
             event_id,
+            player_id,
             expiration_tick,
         };
 
-        debug!("Scheduled event #{} to execute at tick {}", event_id, expiration_tick);
+        debug!(
+            "Scheduled event #{} to execute at tick {}",
+            event_id, expiration_tick
+        );
         self.events.push(event);
         event_id
     }
@@ -81,7 +139,14 @@ impl<T> EventScheduler<T> {
         while let Some(event) = self.events.peek() {
             if event.expiration_tick <= self.current_tick {
                 if let Some(event) = self.events.pop() {
-                    debug!("Event #{} executing at tick {}", event.event_id, self.current_tick);
+                    self.players_states
+                        .get_mut(&event.player_id)
+                        .unwrap()
+                        .nb_events -= 1;
+                    debug!(
+                        "Event #{} executing at tick {}",
+                        event.event_id, self.current_tick
+                    );
                     expired_events.push(event.data);
                 }
             } else {
@@ -101,7 +166,8 @@ impl<T> EventScheduler<T> {
 
         if let Some(index) = index {
             let events = std::mem::take(&mut self.events);
-            self.events = events.into_iter()
+            self.events = events
+                .into_iter()
                 .filter(|e| e.event_id != event_id)
                 .collect();
             debug!("Cancelled event #{}", event_id);
@@ -120,76 +186,22 @@ impl<T> EventScheduler<T> {
     }
 
     pub fn display_pending_events(&self) -> Vec<(u64, u64)>
-    where T: Debug
+    where
+        T: Debug,
     {
-        // Créer une copie temporaire pour le tri
         let mut events: Vec<&TimedEvent<T>> = self.events.iter().collect();
-
-        // Trier par temps d'expiration croissant
         events.sort_by_key(|e| e.expiration_tick);
-
-        // Préparer les résultats
         let mut result = Vec::new();
-
-        // Afficher chaque événement
         for event in events {
             let remaining_ticks = event.expiration_tick.saturating_sub(self.current_tick);
             result.push((event.event_id, remaining_ticks));
 
             debug!(
-                "Event #{}: exécution dans {} ticks (tick {}), données: {:?}",
-                event.event_id,
-                remaining_ticks,
-                event.expiration_tick,
-                event.data
+                "Event #{}: exécution dans {} ticks ({}), données: {:?}",
+                event.event_id, remaining_ticks, event.expiration_tick, event.data
             );
         }
 
         result
-    }
-}
-
-/// Exemple d'utilisation du gestionnaire d'événements
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_event_scheduling() {
-        // Événements simples avec des chaînes de caractères
-        let mut scheduler = EventScheduler::<String>::new();
-
-        // Programme plusieurs événements
-        scheduler.schedule("Event A".to_string(), 5);
-        scheduler.schedule("Event B".to_string(), 5); // Même tick que A
-        scheduler.schedule("Event C".to_string(), 10);
-
-        // Avance de 5 ticks
-        let expired = scheduler.tick_multiple(5);
-        assert_eq!(expired.len(), 2);
-        assert!(expired.contains(&"Event A".to_string()));
-        assert!(expired.contains(&"Event B".to_string()));
-
-        // Avance de 5 ticks supplémentaires
-        let expired = scheduler.tick_multiple(5);
-        assert_eq!(expired.len(), 1);
-        assert_eq!(expired[0], "Event C".to_string());
-    }
-
-    #[test]
-    fn test_event_cancellation() {
-        let mut scheduler = EventScheduler::<&str>::new();
-
-        // Programme plusieurs événements
-        let id1 = scheduler.schedule("Event A", 5);
-        let id2 = scheduler.schedule("Event B", 5);
-
-        // Annule un événement
-        assert!(scheduler.cancel(id1));
-
-        // Avance de 5 ticks
-        let expired = scheduler.tick_multiple(5);
-        assert_eq!(expired.len(), 1);
-        assert_eq!(expired[0], "Event B");
     }
 }

@@ -1,4 +1,3 @@
-use crate::resources::Resource;
 use crate::vec2::Size;
 use log::error;
 
@@ -25,18 +24,7 @@ pub enum SharedResponse {
 #[derive(Debug)]
 pub enum AIAction {
     Shared(SharedAction),
-    Broadcast(String),
-    Forward,
-    Right,
-    Left,
-    Look,
-    Inventory,
-    ConnectNbr,
-    Fork,
-    Eject,
-    Take(Resource),
-    Set(Resource),
-    Incantation,
+    Action(crate::event::Event),
 }
 
 #[derive(Debug)]
@@ -53,6 +41,7 @@ pub enum PendingAction {
 #[derive(Debug)]
 pub enum AIResponse {
     Shared(SharedResponse),
+    Dead,
 }
 
 #[derive(Debug)]
@@ -80,14 +69,14 @@ pub enum ServerResponse {
 }
 
 #[derive(Debug)]
-pub struct Event<T> {
+pub struct GameEvent<T> {
     pub id: Id,
     pub action: T,
 }
 
-pub type AIEvent = Event<AIAction>;
-pub type GUIEvent = Event<GUIAction>;
-pub type PendingEvent = Event<PendingAction>;
+pub type AIEvent = GameEvent<AIAction>;
+pub type GUIEvent = GameEvent<GUIAction>;
+pub type PendingEvent = GameEvent<PendingAction>;
 
 #[derive(Debug)]
 pub enum EventType {
@@ -102,7 +91,7 @@ pub trait ClientSender {
         match self.get_client_tx().send(response).await {
             Ok(_) => {}
             Err(e) => {
-                error!("failed to send response to client: {}", e);
+                error!("failed to send response to client (channel closed?): {}", e);
             }
         };
     }

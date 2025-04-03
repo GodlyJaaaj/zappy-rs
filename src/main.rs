@@ -4,6 +4,7 @@
 mod cell;
 mod connection;
 mod egg;
+mod event;
 mod gui;
 mod handler;
 mod map;
@@ -15,7 +16,6 @@ mod server;
 mod sound;
 mod team;
 mod vec2;
-mod event;
 
 use crate::server::{Server, ServerConfig};
 use std::error::Error;
