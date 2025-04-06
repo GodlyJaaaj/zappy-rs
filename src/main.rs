@@ -28,10 +28,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "0.0.0.0".to_string(),
         4242,
         10,
-        10,
+        4,
         vec!["Team1".to_string(), "Team2".to_string()],
         4,
-        1,
+        50,
     );
     let mut server = Server::from_config(server_config).await?;
     server.run().await?;

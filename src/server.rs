@@ -9,7 +9,7 @@ use crate::protocol::{
     AIAction, AIResponse, ClientSender, EventType, GameEvent, HasId, Id, PendingAction,
     ServerResponse, SharedAction, SharedResponse, TeamType,
 };
-use crate::resources::{Resource, Resources};
+use crate::resources::Resource;
 use crate::sound::get_sound_direction;
 use crate::team::Team;
 use crate::vec2::Size;
@@ -72,7 +72,6 @@ pub struct Server {
     teams: HashMap<Id, Team>,
     pending_clients: HashMap<Id, PendingClient>,
     clients: HashMap<Id, Player>,
-    resources: Resources,
     event_scheduler: EventScheduler<Event>,
 }
 
@@ -109,7 +108,6 @@ impl Server {
             teams,
             pending_clients: HashMap::new(),
             clients: HashMap::new(),
-            resources: Resources::default(),
             event_scheduler: EventScheduler::new(),
         })
     }
@@ -138,16 +136,16 @@ impl Server {
         ];
 
         for res in Resource::iter() {
-            if self.resources[res] >= resources[res as usize].1 {
+            if self.map.resources()[res] >= resources[res as usize].1 {
                 continue;
             }
-            let nb_missing = resources[res as usize].1 - self.resources[res];
+            let nb_missing = resources[res as usize].1 - self.map.resources()[res];
             (0..nb_missing).for_each(|_| {
                 let x = rand::rng().random_range(0..size_x);
                 let y = rand::rng().random_range(0..size_y);
-                self.map[(x, y)].add_resource(res, 1);
+                self.map.add_resource(res, 1, (x, y).into());
             });
-            self.resources[res] += nb_missing;
+            self.map.resources_mut()[res] += nb_missing;
         }
     }
 
@@ -269,7 +267,9 @@ impl Server {
                     emitter
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
                 }
-                Event::Look => {}
+                Event::Look => {
+                    unreachable!()
+                }
                 Event::Inventory => {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
@@ -281,12 +281,62 @@ impl Server {
                         emitter.inventory(),
                     )));
                 }
-                Event::ConnectNbr => {}
-                Event::Fork => {}
-                Event::Eject => {}
-                Event::Take(_) => {}
-                Event::Set(_) => {}
-                Event::Incantation => {}
+                Event::ConnectNbr => {
+                    unreachable!()
+                }
+                Event::Fork => {
+                    unreachable!()
+                }
+                Event::Eject => {
+                    unreachable!()
+                }
+                Event::Take(resource) => {
+                    let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
+                        continue;
+                    };
+                    if emitter.state() == PlayerState::Incantating {
+                        continue;
+                    }
+                    match self.map.del_resource(resource, 1, emitter.pos()) {
+                        None => {
+                            emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
+                                SharedResponse::Ko,
+                            )));
+                        }
+                        Some(_) => {
+                            emitter
+                                .add_resource(resource, 1)
+                                .send_to_client(ServerResponse::AI(AIResponse::Shared(
+                                    SharedResponse::Ok,
+                                )));
+                        }
+                    };
+                }
+                Event::Set(resource) => {
+                    let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
+                        continue;
+                    };
+                    if emitter.state() == PlayerState::Incantating {
+                        continue;
+                    }
+                    let res = emitter.del_resource(resource, 1);
+                    match res {
+                        None => {
+                            emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
+                                SharedResponse::Ko,
+                            )));
+                        }
+                        Some(resource) => {
+                            self.map.add_resource(resource, 1, emitter.pos());
+                            emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
+                                SharedResponse::Ok,
+                            )));
+                        }
+                    }
+                }
+                Event::Incantation => {
+                    unreachable!()
+                }
                 Event::Ko => {
                     if let Some(client) = self.clients.get_mut(&timed_event.player_id) {
                         client.send_to_client(ServerResponse::AI(AIResponse::Shared(
@@ -418,126 +468,3 @@ impl Server {
         }
     }
 }
-
-//match action.action {
-//             Action::LoggedIn(_, _, _) => unreachable!("Thread should not send LoggedIn action"),
-//             Action::Ok => {
-//                 unreachable!("Client should not send Ok action")
-//             }
-//             Action::Ko => {
-//                 unreachable!("Client should not send Ko action")
-//             }
-//             Action::Broadcast(dir, message) => {
-//                 // get the player that sent the broadcast
-//                 let Some(emitter) = self.clients.get(&action.client_id) else {
-//                     unreachable!("Client should be in clients");
-//                 };
-//                 for receiver in self.clients.values() {
-//                     let dir = get_sound_direction(emitter.into(), receiver.into(), self.map.size());
-//                     receiver
-//                         .send(ClientAction {
-//                             client_id: emitter.id(),
-//                             action: Action::Broadcast(dir, message.clone()),
-//                         })
-//                         .await;
-//                 }
-//             }
-//             Action::Forward => {
-//                 let player = self.clients.get_mut(&action.client_id);
-//                 let Some(player) = player else {
-//                     return;
-//                 };
-//                 player.move_forward(&self.map.size());
-//                 player
-//                     .send(ClientAction {
-//                         client_id: player.id(),
-//                         action: Action::Ok,
-//                     })
-//                     .await;
-//             }
-//             Action::Right => {
-//                 let player = self.clients.get_mut(&action.client_id);
-//                 let Some(player) = player else {
-//                     return;
-//                 };
-//                 player.direction_mut().rotate_right();
-//                 player
-//                     .send(ClientAction {
-//                         client_id: player.id(),
-//                         action: Action::Ok,
-//                     })
-//                     .await;
-//             }
-//             Action::Left => {
-//                 let player = self.clients.get_mut(&action.client_id);
-//                 let Some(player) = player else {
-//                     return;
-//                 };
-//                 player.direction_mut().rotate_left();
-//                 player
-//                     .send(ClientAction {
-//                         client_id: player.id(),
-//                         action: Action::Ok,
-//                     })
-//                     .await;
-//             }
-//             Action::Look => {
-//                 todo!("Implement look")
-//             }
-//             Action::Inventory(_) => {
-//                 let player = self.clients.get(&action.client_id);
-//                 let Some(player) = player else {
-//                     return;
-//                 };
-//                 player
-//                     .send(ClientAction {
-//                         client_id: player.id(),
-//                         action: Action::Inventory(player.inventory()),
-//                     })
-//                     .await;
-//             }
-//             Action::ConnectNbr => {
-//                 todo!("Implement connect_nbr")
-//             }
-//             Action::Fork => {
-//                 todo!("Implement fork")
-//             }
-//             Action::Eject => {
-//                 todo!("Implement eject")
-//             }
-//             Action::Take(_) => {
-//                 todo!("Implement take")
-//             }
-//             Action::Set(_) => {
-//                 todo!("Implement set")
-//             }
-//             Action::Incantation => {
-//                 todo!("Implement incantation")
-//             }
-//             Action::Disconnect => {
-//                 self.pending_clients.remove(&action.client_id); // ensure client is removed
-//                 self.clients.remove(&action.client_id); // ensure client is removed
-//                 println!("{:?}", self.pending_clients);
-//                 println!("{:?}", self.clients);
-//             }
-//             Action::Login(team_name) => {
-//                 //todo! gui team
-//                 let pending_client = self.pending_clients.remove(&action.client_id);
-//                 let Some(mut pending_client) = pending_client else {
-//                     //client disconnected in between
-//                     return;
-//                 };
-//                 let team = self
-//                     .teams
-//                     .values_mut()
-//                     .find(|team| team.name() == team_name);
-//                 let Some(team) = team else {
-//                     pending_client.ko().await;
-//                     self.pending_clients
-//                         .insert(action.client_id, pending_client);
-//                     return;
-//                 };
-//                 let player = Player::new(team.id(), pending_client);
-//                 self.add_player(player).await;
-//             }
-//         }

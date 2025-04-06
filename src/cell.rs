@@ -36,4 +36,13 @@ impl Cell {
     pub fn add_resource(&mut self, resource: Resource, amount: u64) {
         self.resources[resource] += amount;
     }
+
+    pub fn del_resource(&mut self, resource: Resource, amount: u64) -> Option<Resource> {
+        if self.resources[resource] >= amount {
+            self.resources[resource] -= amount;
+            Some(resource)
+        } else {
+            None
+        }
+    }
 }

@@ -134,6 +134,20 @@ impl Player {
         }
     }
 
+    pub fn add_resource(&mut self, resource: Resource, amount: u64) -> &mut Self {
+        self.inventory[resource] += amount;
+        self
+    }
+
+    pub fn del_resource(&mut self, resource: Resource, amount: u64) -> Option<Resource> {
+        if self.inventory[resource] >= amount {
+            self.inventory[resource] -= amount;
+            Some(resource)
+        } else {
+            None
+        }
+    }
+
     pub fn move_player(&mut self, dx: isize, dy: isize, map_size: &Size) -> &mut Self {
         self.pos.x = (self.pos.x() as isize + dx).rem_euclid(map_size.x() as isize) as u64;
         self.pos.y = (self.pos.y() as isize + dy).rem_euclid(map_size.y() as isize) as u64;
