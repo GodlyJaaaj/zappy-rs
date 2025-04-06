@@ -1,7 +1,11 @@
 use crate::event::Event::*;
+use crate::handler::command::State::DEAD;
 use crate::handler::command::{CommandHandler, CommandRes, Handler};
-use crate::protocol::{AIAction, AIEvent, EventType, HasId, Id, ServerResponse, SharedAction};
-use crate::resources::Resource;
+use crate::protocol::{
+    AIAction, AIEvent, AIResponse, EventType, HasId, Id, ServerResponse, SharedAction,
+    SharedResponse,
+};
+use crate::resources::{InventoryFormat, Resource};
 
 pub struct AiHandler(Handler);
 
@@ -81,7 +85,24 @@ impl CommandHandler for AiHandler {
     }
 
     fn handle_command(&mut self, command: ServerResponse) -> CommandRes {
-        CommandRes::Response("".to_string())
+        match command {
+            ServerResponse::AI(response) => match response {
+                AIResponse::Shared(shared_response) => match shared_response {
+                    SharedResponse::Ko => CommandRes::Response("ko\n".to_string()),
+                    SharedResponse::Ok => CommandRes::Response("ok\n".to_string()),
+                },
+                AIResponse::Dead => CommandRes::ChangeState(DEAD("dead\n".to_string())),
+                AIResponse::Broadcast(dir, str) => {
+                    CommandRes::Response(format!("message {}, {}\n", dir, str))
+                }
+                AIResponse::Inventory(resources) => {
+                    CommandRes::Response(format!("{}\n", InventoryFormat(&resources)))
+                }
+            },
+            ServerResponse::GUI(_) | ServerResponse::Pending(_) => {
+                unreachable!()
+            }
+        }
     }
 
     fn create_shared_event(&self, action: SharedAction) -> EventType {
@@ -91,51 +112,3 @@ impl CommandHandler for AiHandler {
         })
     }
 }
-
-//match command.action {
-//             Action::Ok => "ok\n".to_string(),
-//             Action::Ko => "ko\n".to_string(),
-//             Action::Broadcast(dir, message) => {
-//                 if self.id() == command.client_id {
-//                     "ok\n".to_string()
-//                 } else {
-//                     format!("message {}, {}\n", dir, message)
-//                 }
-//             }
-//             Action::Look => {
-//                 todo!("Implement look")
-//             }
-//             Action::Inventory(inv) => {
-//                 format!(
-//                     "[deraumere {}, linemate {}, mendiane {}, phiras {}, sibur {}, thystame {}, food {}]\n",
-//                     inv[Resource::Deraumere],
-//                     inv[Resource::Linemate],
-//                     inv[Resource::Mendiane],
-//                     inv[Resource::Phiras],
-//                     inv[Resource::Sibur],
-//                     inv[Resource::Thystame],
-//                     inv[Resource::Food]
-//                 )
-//             }
-//             Action::ConnectNbr => {
-//                 todo!("Implement connect_nbr")
-//             }
-//             Action::Fork => {
-//                 todo!("Implement fork")
-//             }
-//             Action::Eject => {
-//                 todo!("Implement eject")
-//             }
-//             Action::Take(_) => {
-//                 todo!("Implement take")
-//             }
-//             Action::Set(_) => {
-//                 todo!("Implement set")
-//             }
-//             Action::Incantation => {
-//                 todo!("Implement incantation")
-//             }
-//             _ => {
-//                 todo!("should not be there")
-//             }
-//         }
