@@ -2,7 +2,7 @@ use crate::handler::ai::AiHandler;
 use crate::handler::command::{CommandHandler, CommandRes, State};
 use crate::handler::login::LoginHandler;
 use crate::protocol::{EventType, ServerResponse, SharedAction};
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -183,11 +183,6 @@ impl Connection {
 
         reader_task.abort();
         server_task.abort();
-
-        info!(
-            "Client {}: Connection handler exiting",
-            self.command_handler.id()
-        );
 
         if let Err(e) = &result {
             self.server_tx

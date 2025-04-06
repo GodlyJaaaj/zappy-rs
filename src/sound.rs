@@ -1,6 +1,6 @@
 use crate::player::{Direction, Player};
-use crate::vec2::Position;
 use crate::vec2::Size;
+use crate::vec2::{HasPosition, Position};
 use std::f64::consts::PI;
 
 pub struct Emitter {
@@ -9,7 +9,9 @@ pub struct Emitter {
 
 impl From<&Player> for Emitter {
     fn from(player: &Player) -> Self {
-        Emitter { pos: player.pos() }
+        Emitter {
+            pos: player.position(),
+        }
     }
 }
 
@@ -21,7 +23,7 @@ pub struct Receiver {
 impl From<&Player> for Receiver {
     fn from(player: &Player) -> Self {
         Receiver {
-            pos: player.pos(),
+            pos: player.position(),
             direction: player.direction(),
         }
     }

@@ -1,7 +1,7 @@
 use crate::protocol::{HasId, Id};
 
 pub struct Team {
-    id: u64,
+    id: Id,
     name: String,
 }
 

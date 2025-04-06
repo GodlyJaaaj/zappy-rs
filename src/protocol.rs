@@ -56,7 +56,7 @@ pub enum GUIResponse {
 #[derive(Debug)]
 pub enum TeamType {
     Graphic,
-    IA(String, u64, Size),
+    IA(u64, Size),
 }
 
 #[derive(Debug)]

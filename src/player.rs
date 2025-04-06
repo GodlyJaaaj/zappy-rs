@@ -1,7 +1,7 @@
 use crate::pending::PendingClient;
 use crate::protocol::{ClientSender, HasId, Id, ServerResponse};
 use crate::resources::{Resource, Resources};
-use crate::vec2::{Position, Size};
+use crate::vec2::{HasPosition, Position, Size};
 use rand::random;
 use tokio::sync::mpsc::Sender;
 
@@ -59,8 +59,8 @@ pub enum PlayerState {
 
 #[derive(Clone, Debug)]
 pub struct Player {
-    team: u64,
-    id: u64,
+    team: Id,
+    id: Id,
     inventory: Resources,
     pos: Position,
     direction: Direction,
@@ -71,20 +71,6 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(team: u64, pending_client: PendingClient) -> Self {
-        Player {
-            team,
-            id: pending_client.id(),
-            inventory: Resources::builder().food(10).build(),
-            pos: Position::default(), //todo!
-            direction: Direction::new(),
-            elevation: 1,
-            satiety: REFILL_PER_FOOD, // todo!
-            client_tx: pending_client.client_tx,
-            state: Default::default(),
-        }
-    }
-
     pub fn state(&self) -> PlayerState {
         self.state
     }
@@ -117,14 +103,6 @@ impl Player {
         &mut self.direction
     }
 
-    pub fn pos(&self) -> Position {
-        self.pos
-    }
-
-    pub fn pos_mut(&mut self) -> &mut Position {
-        &mut self.pos
-    }
-
     pub fn move_forward(&mut self, map_size: &Size) -> &mut Self {
         match self.direction {
             Direction::North => self.move_player(0, 1, map_size),
@@ -155,6 +133,16 @@ impl Player {
     }
 }
 
+impl HasPosition for Player {
+    fn position(&self) -> Position {
+        self.pos
+    }
+
+    fn position_mut(&mut self) -> &mut Position {
+        &mut self.pos
+    }
+}
+
 impl HasId for Player {
     fn id(&self) -> Id {
         self.id
@@ -167,9 +155,148 @@ impl ClientSender for Player {
     }
 }
 
+pub struct PlayerBuilder {
+    team: Option<Id>,
+    id: Option<Id>,
+    inventory: Resources,
+    pos: Position,
+    direction: Direction,
+    elevation: u8,
+    satiety: u64,
+    client_tx: Option<Sender<ServerResponse>>,
+    state: PlayerState,
+}
+
+impl PlayerBuilder {
+    pub fn new() -> Self {
+        PlayerBuilder {
+            team: None,
+            id: None,
+            inventory: Resources::builder().food(10).build(),
+            pos: Position::default(),
+            direction: Direction::default(),
+            elevation: 1,
+            satiety: REFILL_PER_FOOD,
+            client_tx: None,
+            state: PlayerState::default(),
+        }
+    }
+
+    pub fn team(mut self, team: Id) -> Self {
+        self.team = Some(team);
+        self
+    }
+
+    pub fn id(mut self, id: Id) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn inventory(mut self, inventory: Resources) -> Self {
+        self.inventory = inventory;
+        self
+    }
+
+    pub fn position(mut self, pos: Position) -> Self {
+        self.pos = pos;
+        self
+    }
+
+    pub fn direction(mut self, direction: Direction) -> Self {
+        self.direction = direction;
+        self
+    }
+
+    pub fn elevation(mut self, elevation: u8) -> Self {
+        self.elevation = elevation;
+        self
+    }
+
+    pub fn satiety(mut self, satiety: u64) -> Self {
+        self.satiety = satiety;
+        self
+    }
+
+    pub fn client_tx(mut self, client_tx: Sender<ServerResponse>) -> Self {
+        self.client_tx = Some(client_tx);
+        self
+    }
+
+    pub fn pending_client(mut self, pending_client: PendingClient) -> Self {
+        self.id = Some(pending_client.id());
+        self.client_tx = Some(pending_client.client_tx);
+        self
+    }
+
+    pub fn state(mut self, state: PlayerState) -> Self {
+        self.state = state;
+        self
+    }
+
+    pub fn build(self) -> Result<Player, &'static str> {
+        let team = self.team.ok_or("Team ID is required")?;
+        let id = self.id.ok_or("Player ID is required")?;
+        let client_tx = self.client_tx.ok_or("Client transmitter is required")?;
+
+        Ok(Player {
+            team,
+            id,
+            inventory: self.inventory,
+            pos: self.pos,
+            direction: self.direction,
+            elevation: self.elevation,
+            satiety: self.satiety,
+            client_tx,
+            state: self.state,
+        })
+    }
+}
+
+impl Default for PlayerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Player {
+    pub fn builder() -> PlayerBuilder {
+        PlayerBuilder::new()
+    }
+
+    pub fn new(team: Id, pending_client: PendingClient) -> Self {
+        PlayerBuilder::new()
+            .team(team)
+            .pending_client(pending_client)
+            .build()
+            .expect("Failed to build Player with valid parameters")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn test_player_builder() {
+        let (tx, _rx) = mpsc::channel(10);
+        let player = PlayerBuilder::new()
+            .team(42)
+            .id(1)
+            .client_tx(tx)
+            .position(Position::new(10, 20))
+            .direction(Direction::North)
+            .elevation(2)
+            .satiety(200)
+            .state(PlayerState::Idle)
+            .build()
+            .unwrap();
+
+        assert_eq!(player.id(), 1);
+        assert_eq!(player.position(), Position::new(10, 20));
+        assert_eq!(player.direction(), Direction::North);
+        assert_eq!(player.state(), PlayerState::Idle);
+    }
 
     #[tokio::test]
     async fn test_direction_rotate_right() {

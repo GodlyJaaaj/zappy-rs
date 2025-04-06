@@ -1,6 +1,9 @@
 use crate::cell::Cell;
+use crate::egg::Egg;
+use crate::protocol::{HasId, Id};
 use crate::resources::{Resource, Resources};
 use crate::vec2::{Position, Size};
+use rand::Rng;
 use std::fmt;
 use std::ops::{Index, IndexMut};
 
@@ -8,6 +11,7 @@ pub struct Map {
     size: Size,
     map: Vec<Vec<Cell>>,
     resources: Resources,
+    eggs: Vec<Egg>,
 }
 
 impl Index<Position> for Map {
@@ -30,6 +34,7 @@ impl Map {
             size,
             map: vec![vec![Cell::new(); size.x() as usize]; size.y() as usize],
             resources: Default::default(),
+            eggs: Default::default(),
         }
     }
 
@@ -37,12 +42,35 @@ impl Map {
         self.size
     }
 
-    pub fn resources_mut(&mut self) -> &mut Resources {
-        &mut self.resources
-    }
-
     pub fn resources(&self) -> &Resources {
         &self.resources
+    }
+
+    pub fn nb_eggs_by_team(&self, team_id: Id) -> u64 {
+        self.eggs.iter().filter(|egg| egg.id() == team_id).count() as u64
+    }
+
+    pub fn spawn_egg(&mut self, team_id: Id, pos: Position) {
+        let new_egg = Egg::new(team_id, pos);
+        self.eggs.push(new_egg);
+    }
+
+    pub fn spawn_eggs(&mut self, team_id: Id, amount: u64) {
+        (0..amount).for_each(|_| {
+            let x = rand::rng().random_range(0..self.size.x());
+            let y = rand::rng().random_range(0..self.size.y());
+            let pos = Position::new(x, y);
+            self.spawn_egg(team_id, pos);
+        });
+    }
+
+    pub fn drop_egg(&mut self, team_id: Id) -> Option<Egg> {
+        if let Some(pos) = self.eggs.iter().position(|egg| egg.id() == team_id) {
+            let egg = self.eggs.remove(pos);
+            Some(egg)
+        } else {
+            None
+        }
     }
 
     pub fn add_resource(&mut self, resource: Resource, amount: u64, pos: Position) {

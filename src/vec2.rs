@@ -9,6 +9,12 @@ pub type Position = Vec2<u64>;
 /// A size in the game
 pub type Size = Vec2<u64>;
 
+pub trait HasPosition {
+    fn position(&self) -> Position;
+
+    fn position_mut(&mut self) -> &mut Position;
+}
+
 impl Vec2<u64> {
     /// Create a new Vec2
     pub fn new(x: u64, y: u64) -> Self {

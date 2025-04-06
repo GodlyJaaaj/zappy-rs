@@ -39,12 +39,10 @@ impl CommandHandler for LoginHandler {
                     TeamType::Graphic => {
                         todo!();
                     }
-                    TeamType::IA(team_name, client_num, map_size) => {
-                        ChangeState(State::IA(format!(
-                            "{}\n{}\n{} {}\n",
-                            team_name, client_num, map_size.x, map_size.y
-                        )))
-                    }
+                    TeamType::IA(client_num, map_size) => ChangeState(State::IA(format!(
+                        "{}\n{} {}\n",
+                        client_num, map_size.x, map_size.y
+                    ))),
                 },
             },
             _ => {

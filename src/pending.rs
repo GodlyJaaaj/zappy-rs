@@ -3,7 +3,7 @@ use tokio::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub struct PendingClient {
-    pub client_id: u64,
+    pub client_id: Id,
     pub client_tx: Sender<ServerResponse>,
 }
 

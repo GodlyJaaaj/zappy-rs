@@ -12,14 +12,14 @@ use crate::protocol::{
 use crate::resources::Resource;
 use crate::sound::get_sound_direction;
 use crate::team::Team;
-use crate::vec2::Size;
+use crate::vec2::{HasPosition, Size};
 use log::{debug, info, warn};
 use rand::Rng;
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -68,7 +68,6 @@ pub struct Server {
     socket: TcpListener,
     freq: u64,
     map: Map,
-    max_clients: u64,
     teams: HashMap<Id, Team>,
     pending_clients: HashMap<Id, PendingClient>,
     clients: HashMap<Id, Player>,
@@ -98,13 +97,18 @@ impl Server {
             teams.insert(team_id as Id, Team::new(team_id as Id, team));
         }
 
+        let mut map = Map::new(Size::new(config.width as u64, config.height as u64));
+
+        for (team_id, ..) in &teams {
+            map.spawn_eggs(*team_id, config.clients_nb);
+        }
+
         Ok(Server {
             global_channel: ThreadChannel { tx, rx },
             tick_interval,
             socket,
             freq: config.freq as u64,
-            map: Map::new(Size::new(config.width as u64, config.height as u64)),
-            max_clients: config.clients_nb,
+            map,
             teams,
             pending_clients: HashMap::new(),
             clients: HashMap::new(),
@@ -145,7 +149,6 @@ impl Server {
                 let y = rand::rng().random_range(0..size_y);
                 self.map.add_resource(res, 1, (x, y).into());
             });
-            self.map.resources_mut()[res] += nb_missing;
         }
     }
 
@@ -232,7 +235,6 @@ impl Server {
                     }
                     emitter
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
-                    info!("Sent AI event");
                 }
                 Event::Forward => {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
@@ -297,7 +299,7 @@ impl Server {
                     if emitter.state() == PlayerState::Incantating {
                         continue;
                     }
-                    match self.map.del_resource(resource, 1, emitter.pos()) {
+                    match self.map.del_resource(resource, 1, emitter.position()) {
                         None => {
                             emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
                                 SharedResponse::Ko,
@@ -327,7 +329,7 @@ impl Server {
                             )));
                         }
                         Some(resource) => {
-                            self.map.add_resource(resource, 1, emitter.pos());
+                            self.map.add_resource(resource, 1, emitter.position());
                             emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
                                 SharedResponse::Ok,
                             )));
@@ -403,20 +405,32 @@ impl Server {
                 send_ko(client);
             }
             PendingAction::Login(team_name) => {
-                info!("Pending client {} logged in with team {}", id, team_name);
-
                 let Some(team) = self.teams.values().find(|team| team.name() == team_name) else {
                     send_ko(client);
                     return;
                 };
 
+                if self.map.nb_eggs_by_team(team.id()) == 0 {
+                    warn!(
+                        "Client {} can't login: team '{}' has no eggs",
+                        id, team_name
+                    );
+                    send_ko(client);
+                    return;
+                }
+
+                let egg = self.map.drop_egg(team.id()).unwrap();
                 let pending_client = self.pending_clients.remove(&id).unwrap();
-                let player = Player::new(team.id(), pending_client);
-                warn!("hardcoded info at login");
+
+                let player_builder = Player::builder()
+                    .team(team.id())
+                    .pending_client(pending_client)
+                    .position(egg.position());
+
+                let player = player_builder.build().unwrap();
                 player.send_to_client(ServerResponse::Pending(LogAs(TeamType::IA(
-                    team_name,
-                    0,
-                    (0, 0).into(),
+                    self.map.nb_eggs_by_team(team.id()),
+                    player.position(),
                 ))));
 
                 self.clients.insert(player.id(), player);
