@@ -1,5 +1,7 @@
+use crate::resources::Resources;
 use crate::vec2::Size;
 use log::error;
+use std::sync::Arc;
 
 pub type Id = u64;
 
@@ -42,6 +44,8 @@ pub enum PendingAction {
 pub enum AIResponse {
     Shared(SharedResponse),
     Dead,
+    Broadcast(u8, Arc<String>),
+    Inventory(Resources),
 }
 
 #[derive(Debug)]
@@ -87,12 +91,13 @@ pub enum EventType {
 
 pub trait ClientSender {
     fn get_client_tx(&self) -> &tokio::sync::mpsc::Sender<ServerResponse>;
-    async fn send_to_client(&self, response: ServerResponse) {
-        match self.get_client_tx().send(response).await {
+    fn send_to_client(&self, response: ServerResponse) -> &Self {
+        match self.get_client_tx().try_send(response) {
             Ok(_) => {}
             Err(e) => {
                 error!("failed to send response to client (channel closed?): {}", e);
             }
         };
+        self
     }
 }
