@@ -8,16 +8,16 @@ pub struct Map {
     map: Vec<Vec<Cell>>,
 }
 
-impl Index<(u32, u32)> for Map {
+impl Index<(u64, u64)> for Map {
     type Output = Cell;
 
-    fn index(&self, index: (u32, u32)) -> &Self::Output {
+    fn index(&self, index: (u64, u64)) -> &Self::Output {
         &self.map[index.1 as usize][index.0 as usize]
     }
 }
 
-impl IndexMut<(u32, u32)> for Map {
-    fn index_mut(&mut self, index: (u32, u32)) -> &mut Self::Output {
+impl IndexMut<(u64, u64)> for Map {
+    fn index_mut(&mut self, index: (u64, u64)) -> &mut Self::Output {
         &mut self.map[index.1 as usize][index.0 as usize]
     }
 }
