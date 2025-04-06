@@ -1,9 +1,11 @@
 use crate::protocol::Id;
 use crate::resources::Resource;
-use log::debug;
+use log::{debug, warn};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use std::fmt::Debug;
+
+const MAX_SIMULTANEOUS_EVENTS: u64 = 10;
 
 #[derive(Debug)]
 pub enum Event {
@@ -19,6 +21,9 @@ pub enum Event {
     Take(Resource),
     Set(Resource),
     Incantation,
+
+    //Can't be sent by IA
+    Ko,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +97,10 @@ impl<T> EventScheduler<T> {
         self.next_event_id += 1;
 
         let expiration_tick: u64 = if let Some(state) = self.players_states.get_mut(&player_id) {
+            if state.nb_events == MAX_SIMULTANEOUS_EVENTS {
+                warn!("Client {} reached max nb_events", player_id);
+                return 0;
+            }
             if state.nb_events > 0 {
                 state.last_action_tick += event_ticks;
                 state.nb_events += 1;
@@ -115,25 +124,25 @@ impl<T> EventScheduler<T> {
             expiration_tick,
         };
 
-        debug!(
-            "Scheduled event #{} to execute at tick {}",
-            event_id, expiration_tick
-        );
+        //debug!(
+        //    "Scheduled event #{} to execute at tick {}",
+        //    event_id, expiration_tick
+        //);
         self.events.push(event);
         event_id
     }
 
-    pub fn tick(&mut self) -> Vec<T> {
+    pub fn tick(&mut self) -> Vec<TimedEvent<T>> {
         self.current_tick += 1;
         self.get_expired_events()
     }
 
-    pub fn tick_multiple(&mut self, ticks: u64) -> Vec<T> {
+    pub fn tick_multiple(&mut self, ticks: u64) -> Vec<TimedEvent<T>> {
         self.current_tick += ticks;
         self.get_expired_events()
     }
 
-    fn get_expired_events(&mut self) -> Vec<T> {
+    fn get_expired_events(&mut self) -> Vec<TimedEvent<T>> {
         let mut expired_events = Vec::new();
 
         while let Some(event) = self.events.peek() {
@@ -143,11 +152,11 @@ impl<T> EventScheduler<T> {
                         .get_mut(&event.player_id)
                         .unwrap()
                         .nb_events -= 1;
-                    debug!(
-                        "Event #{} executing at tick {}",
-                        event.event_id, self.current_tick
-                    );
-                    expired_events.push(event.data);
+                    //debug!(
+                    //    "Event #{} executing at tick {}",
+                    //    event.event_id, self.current_tick
+                    //);
+                    expired_events.push(event);
                 }
             } else {
                 break;
