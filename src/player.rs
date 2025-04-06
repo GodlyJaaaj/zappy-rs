@@ -1,9 +1,11 @@
 use crate::pending::PendingClient;
 use crate::protocol::{ClientSender, HasId, Id, ServerResponse};
-use crate::resources::Resources;
+use crate::resources::{Resource, Resources};
 use crate::vec2::{Position, Size};
 use rand::random;
 use tokio::sync::mpsc::Sender;
+
+const REFILL_PER_FOOD: u64 = 126;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Direction {
@@ -11,6 +13,12 @@ pub enum Direction {
     East,
     South,
     West,
+}
+
+impl Default for Direction {
+    fn default() -> Self {
+        Direction::new()
+    }
 }
 
 impl Direction {
@@ -42,6 +50,13 @@ impl Direction {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub enum PlayerState {
+    #[default]
+    Idle,
+    Incantating,
+}
+
 #[derive(Clone, Debug)]
 pub struct Player {
     team: u64,
@@ -50,8 +65,9 @@ pub struct Player {
     pos: Position,
     direction: Direction,
     elevation: u8,
-    satiety: u8,
+    satiety: u64,
     client_tx: Sender<ServerResponse>,
+    state: PlayerState,
 }
 
 impl Player {
@@ -59,13 +75,34 @@ impl Player {
         Player {
             team,
             id: pending_client.id(),
-            inventory: Resources::default(),
-            pos: (0, 0).into(), // todo!
+            inventory: Resources::builder().food(10).build(),
+            pos: Position::default(), //todo!
             direction: Direction::new(),
             elevation: 1,
-            satiety: 10, // todo!
+            satiety: REFILL_PER_FOOD, // todo!
             client_tx: pending_client.client_tx,
+            state: Default::default(),
         }
+    }
+
+    pub fn state(&self) -> PlayerState {
+        self.state
+    }
+
+    pub fn reduce_satiety(&mut self, reduction: u64) -> u64 {
+        let new_satiety = self.satiety.saturating_sub(reduction);
+
+        if new_satiety == 0 {
+            if self.inventory[Resource::Food] > 0 {
+                self.inventory[Resource::Food] = self.inventory[Resource::Food].saturating_sub(1);
+                self.satiety = new_satiety.saturating_add(REFILL_PER_FOOD);
+            } else {
+                self.satiety = new_satiety;
+            }
+        } else {
+            self.satiety = new_satiety;
+        }
+        self.satiety
     }
 
     pub fn inventory(&self) -> Resources {
@@ -88,7 +125,7 @@ impl Player {
         &mut self.pos
     }
 
-    pub fn move_forward(&mut self, map_size: &Size) {
+    pub fn move_forward(&mut self, map_size: &Size) -> &mut Self {
         match self.direction {
             Direction::North => self.move_player(0, 1, map_size),
             Direction::East => self.move_player(1, 0, map_size),
@@ -97,14 +134,11 @@ impl Player {
         }
     }
 
-    pub fn move_player(&mut self, dx: isize, dy: isize, map_size: &Size) {
+    pub fn move_player(&mut self, dx: isize, dy: isize, map_size: &Size) -> &mut Self {
         self.pos.x = (self.pos.x() as isize + dx).rem_euclid(map_size.x() as isize) as u64;
         self.pos.y = (self.pos.y() as isize + dy).rem_euclid(map_size.y() as isize) as u64;
+        self
     }
-
-    //pub async fn send(&self, action: ClientAction) {
-    //    let _ = self.client_tx.send(action).await;
-    //}
 }
 
 impl HasId for Player {
