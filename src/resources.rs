@@ -25,14 +25,23 @@ impl Resource {
             Resource::Thystame,
             Resource::Food,
         ]
-        .iter()
-        .cloned()
+        .into_iter()
     }
 }
 
-#[derive(Default, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct Resources {
     contents: [u64; Resource::Food as usize + 1],
+}
+
+impl Resources {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn builder() -> ResourcesBuilder {
+        ResourcesBuilder::new()
+    }
 }
 
 impl Index<Resource> for Resources {
@@ -49,24 +58,96 @@ impl IndexMut<Resource> for Resources {
     }
 }
 
-impl fmt::Display for Resources {
+pub struct InventoryFormat<'a>(pub &'a Resources);
+
+impl<'a> fmt::Display for InventoryFormat<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let r = self.0;
         write!(
             f,
-            "{},{},{},{},{},{},{}",
-            self[Resource::Deraumere],
-            self[Resource::Linemate],
-            self[Resource::Mendiane],
-            self[Resource::Phiras],
-            self[Resource::Sibur],
-            self[Resource::Thystame],
-            self[Resource::Food]
+            "[deraumere {}, linemate {}, mendiane {}, phiras {}, sibur {}, thystame {}, food {}]",
+            r[Resource::Deraumere],
+            r[Resource::Linemate],
+            r[Resource::Mendiane],
+            r[Resource::Phiras],
+            r[Resource::Sibur],
+            r[Resource::Thystame],
+            r[Resource::Food]
         )
     }
 }
 
-impl fmt::Debug for Resources {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self)
+pub struct ResourcesBuilder {
+    resources: Resources,
+}
+
+impl ResourcesBuilder {
+    pub fn new() -> Self {
+        Self {
+            resources: Resources::default(),
+        }
+    }
+    pub fn deraumere(mut self, amount: u64) -> Self {
+        self.resources[Resource::Deraumere] = amount;
+        self
+    }
+
+    pub fn linemate(mut self, amount: u64) -> Self {
+        self.resources[Resource::Linemate] = amount;
+        self
+    }
+
+    pub fn mendiane(mut self, amount: u64) -> Self {
+        self.resources[Resource::Mendiane] = amount;
+        self
+    }
+
+    pub fn phiras(mut self, amount: u64) -> Self {
+        self.resources[Resource::Phiras] = amount;
+        self
+    }
+
+    pub fn sibur(mut self, amount: u64) -> Self {
+        self.resources[Resource::Sibur] = amount;
+        self
+    }
+
+    pub fn thystame(mut self, amount: u64) -> Self {
+        self.resources[Resource::Thystame] = amount;
+        self
+    }
+
+    pub fn food(mut self, amount: u64) -> Self {
+        self.resources[Resource::Food] = amount;
+        self
+    }
+
+    pub fn resource(mut self, resource: Resource, amount: u64) -> Self {
+        self.resources[resource] = amount;
+        self
+    }
+
+    pub fn build(self) -> Resources {
+        self.resources
+    }
+}
+
+// Example usage
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resources_builder() {
+        let resources = Resources::builder()
+            .deraumere(5)
+            .linemate(3)
+            .food(10)
+            .build();
+
+        assert_eq!(resources[Resource::Deraumere], 5);
+        assert_eq!(resources[Resource::Linemate], 3);
+        assert_eq!(resources[Resource::Food], 10);
+        assert_eq!(resources[Resource::Mendiane], 0);
     }
 }
