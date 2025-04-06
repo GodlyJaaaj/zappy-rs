@@ -2,6 +2,19 @@
 name = "zappy-rs"
 version = "0.1.0"
 edition = "2021"
+readme = "README.md"
+repository = "https://github.com/GodlyJaaaj/zappy-rs"
+rust-version = "1.82.0"
+keywords = ["zappy", "zappy-rs", "multithreaded", "blazing-fast", "epitech"]
+default-run = "zappy-rs"
+
+[[bin]]
+name = "zappy-rs"
+path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1.42.0", features = ["full"] }
+tokio = { version = "1.44.1", features = ["full"] }
+rand = "0.9.0"
+env_logger = "0.11.7"
+log = "0.4.27"
+thiserror = "2.0.12"
