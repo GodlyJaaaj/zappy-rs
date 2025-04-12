@@ -1,7 +1,7 @@
 use crate::pending::PendingClient;
 use crate::protocol::{ClientSender, HasId, Id, ServerResponse};
-use crate::resources::{Resource, Resources};
-use crate::vec2::{HasPosition, Position, Size};
+use crate::resources::{ElevationLevel, Resource, Resources};
+use crate::vec2::{HasPosition, Position, Size, UPosition};
 use rand::random;
 use tokio::sync::mpsc::Sender;
 
@@ -50,6 +50,36 @@ impl Direction {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RelativeDirection {
+    Back,
+    Left,
+    Front,
+    Right,
+}
+
+impl From<RelativeDirection> for u8 {
+    fn from(dir: RelativeDirection) -> Self {
+        match dir {
+            RelativeDirection::Back => 5,
+            RelativeDirection::Left => 3,
+            RelativeDirection::Front => 1,
+            RelativeDirection::Right => 7,
+        }
+    }
+}
+
+impl From<Direction> for i8 {
+    fn from(value: Direction) -> Self {
+        match value {
+            Direction::North => 1,
+            Direction::East => 2,
+            Direction::South => 3,
+            Direction::West => 4,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum PlayerState {
     #[default]
@@ -62,17 +92,32 @@ pub struct Player {
     team: Id,
     id: Id,
     inventory: Resources,
-    pos: Position,
+    pos: UPosition,
     direction: Direction,
-    elevation: u8,
+    elevation: ElevationLevel,
     satiety: u64,
     client_tx: Sender<ServerResponse>,
     state: PlayerState,
 }
 
 impl Player {
+    pub fn is_incantating(&self) -> bool {
+        self.state == PlayerState::Incantating
+    }
+    pub fn level(&self) -> ElevationLevel {
+        self.elevation
+    }
+
+    pub fn level_mut(&mut self) -> &mut ElevationLevel {
+        &mut self.elevation
+    }
+
     pub fn state(&self) -> PlayerState {
         self.state
+    }
+
+    pub fn state_mut(&mut self) -> &mut PlayerState {
+        &mut self.state
     }
 
     pub fn reduce_satiety(&mut self, reduction: u64) -> u64 {
@@ -89,6 +134,10 @@ impl Player {
             self.satiety = new_satiety;
         }
         self.satiety
+    }
+
+    pub fn team_id(&self) -> Id {
+        self.team
     }
 
     pub fn inventory(&self) -> Resources {
@@ -131,14 +180,38 @@ impl Player {
         self.pos.y = (self.pos.y() as isize + dy).rem_euclid(map_size.y() as isize) as u64;
         self
     }
+
+    pub fn get_visible_positions(&self) -> Vec<Position> {
+        let mut visible_positions = Vec::new();
+
+        visible_positions.push(Position::new(self.pos.x as i64, self.pos.y as i64));
+        for y in 1..=self.elevation as u8 + 1 {
+            for x in -(y as i64)..=(y as i64) {
+                let rel_pos = match self.direction() {
+                    Direction::North => Position::new(x, y as i64),
+                    Direction::East => Position::new(y as i64, -x),
+                    Direction::South => Position::new(-x, -(y as i64)),
+                    Direction::West => Position::new(-(y as i64), x),
+                };
+                let abs_pos = Position::new(
+                    self.position().x as i64 + rel_pos.x,
+                    self.position().y as i64 + rel_pos.y,
+                );
+
+                visible_positions.push(abs_pos);
+            }
+        }
+
+        visible_positions
+    }
 }
 
 impl HasPosition for Player {
-    fn position(&self) -> Position {
+    fn position(&self) -> UPosition {
         self.pos
     }
 
-    fn position_mut(&mut self) -> &mut Position {
+    fn position_mut(&mut self) -> &mut UPosition {
         &mut self.pos
     }
 }
@@ -159,9 +232,9 @@ pub struct PlayerBuilder {
     team: Option<Id>,
     id: Option<Id>,
     inventory: Resources,
-    pos: Position,
+    pos: UPosition,
     direction: Direction,
-    elevation: u8,
+    elevation: ElevationLevel,
     satiety: u64,
     client_tx: Option<Sender<ServerResponse>>,
     state: PlayerState,
@@ -173,9 +246,9 @@ impl PlayerBuilder {
             team: None,
             id: None,
             inventory: Resources::builder().food(10).build(),
-            pos: Position::default(),
+            pos: UPosition::default(),
             direction: Direction::default(),
-            elevation: 1,
+            elevation: ElevationLevel::default(),
             satiety: REFILL_PER_FOOD,
             client_tx: None,
             state: PlayerState::default(),
@@ -197,7 +270,7 @@ impl PlayerBuilder {
         self
     }
 
-    pub fn position(mut self, pos: Position) -> Self {
+    pub fn position(mut self, pos: UPosition) -> Self {
         self.pos = pos;
         self
     }
@@ -207,7 +280,7 @@ impl PlayerBuilder {
         self
     }
 
-    pub fn elevation(mut self, elevation: u8) -> Self {
+    pub fn elevation(mut self, elevation: ElevationLevel) -> Self {
         self.elevation = elevation;
         self
     }
@@ -275,6 +348,7 @@ impl Player {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::ElevationLevel::Level2;
     use tokio::sync::mpsc;
 
     #[tokio::test]
@@ -284,16 +358,16 @@ mod tests {
             .team(42)
             .id(1)
             .client_tx(tx)
-            .position(Position::new(10, 20))
+            .position(UPosition::new(10, 20))
             .direction(Direction::North)
-            .elevation(2)
+            .elevation(Level2)
             .satiety(200)
             .state(PlayerState::Idle)
             .build()
             .unwrap();
 
         assert_eq!(player.id(), 1);
-        assert_eq!(player.position(), Position::new(10, 20));
+        assert_eq!(player.position(), UPosition::new(10, 20));
         assert_eq!(player.direction(), Direction::North);
         assert_eq!(player.state(), PlayerState::Idle);
     }

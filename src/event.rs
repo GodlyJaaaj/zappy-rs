@@ -1,8 +1,9 @@
 use crate::protocol::Id;
-use crate::resources::Resource;
-use log::{debug, warn};
+use crate::resources::{LevelRequirement, Resource};
+use crate::vec2::UPosition;
+use log::{debug, trace, warn};
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
 use std::fmt::Debug;
 
 const MAX_SIMULTANEOUS_EVENTS: u64 = 10;
@@ -24,6 +25,8 @@ pub enum Event {
 
     //Can't be sent by IA
     Ko,
+    Phantom, // Phantom Event, does almost nothing, only exists to make a client wait for this event
+    IncantationEnd(Vec<Id>, &'static LevelRequirement, UPosition),
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +78,6 @@ pub struct EventScheduler<T> {
     events: BinaryHeap<TimedEvent<T>>,
     current_tick: u64,
     next_event_id: Id,
-    players_states: HashMap<Id, PlayerState>,
 }
 
 impl<T> EventScheduler<T> {
@@ -84,38 +86,58 @@ impl<T> EventScheduler<T> {
             events: BinaryHeap::new(),
             current_tick: 0,
             next_event_id: 0,
-            players_states: HashMap::new(),
         }
     }
 
-    pub fn del_player(&mut self, player_id: Id) {
-        self.players_states.remove(&player_id);
+    pub fn get_nb_events_by_player_id(&self, player_id: Id) -> (u64, u64) {
+        let mut nb_events: u64 = 0;
+        let mut last_action_tick = self.current_tick;
+
+        for event in self.events.iter() {
+            if event.player_id == player_id {
+                nb_events += 1;
+                if event.expiration_tick > last_action_tick {
+                    last_action_tick = event.expiration_tick;
+                }
+            }
+        }
+
+        (nb_events, last_action_tick)
+    }
+
+    pub fn force_schedule(&mut self, data: T, event_ticks: u64, player_id: Id) -> Id {
+        let event_id = self.next_event_id;
+        self.next_event_id += 1;
+
+        let expiration_tick = self.current_tick + event_ticks;
+
+        let event = TimedEvent {
+            data,
+            event_id,
+            player_id,
+            expiration_tick,
+        };
+
+        debug!(
+            "Force scheduled event #{} for player {} to execute at tick {}",
+            event_id, player_id, expiration_tick
+        );
+
+        self.events.push(event);
+        event_id
     }
 
     pub fn schedule(&mut self, data: T, event_ticks: u64, player_id: Id) -> Id {
         let event_id = self.next_event_id;
         self.next_event_id += 1;
 
-        let expiration_tick: u64 = if let Some(state) = self.players_states.get_mut(&player_id) {
-            if state.nb_events == MAX_SIMULTANEOUS_EVENTS {
-                warn!("Client {} reached max nb_events", player_id);
-                return 0;
-            }
-            if state.nb_events > 0 {
-                state.last_action_tick += event_ticks;
-                state.nb_events += 1;
-                state.last_action_tick
-            } else {
-                state.last_action_tick = self.current_tick + event_ticks;
-                state.nb_events += 1;
-                state.last_action_tick
-            }
-        } else {
-            let expiration_tick = self.current_tick + event_ticks;
-            let state = PlayerState::new(1, expiration_tick);
-            self.players_states.insert(player_id, state);
-            expiration_tick
-        };
+        let (nb_events, last_tick) = self.get_nb_events_by_player_id(player_id);
+        if nb_events > MAX_SIMULTANEOUS_EVENTS {
+            warn!("Client {} reached max nb_events", player_id);
+            return 0;
+        }
+
+        let expiration_tick = last_tick + event_ticks;
 
         let event = TimedEvent {
             data,
@@ -130,6 +152,33 @@ impl<T> EventScheduler<T> {
         //);
         self.events.push(event);
         event_id
+    }
+
+    pub fn shift_client_events(&mut self, player_id: Id, shift_ticks: i64) {
+        let mut all_events: Vec<TimedEvent<T>> = Vec::new();
+        let mut client_events: Vec<TimedEvent<T>> = Vec::new();
+
+        while let Some(event) = self.events.pop() {
+            if event.player_id == player_id {
+                client_events.push(event);
+            } else {
+                all_events.push(event);
+            }
+        }
+
+        for mut event in client_events {
+            let new_expiration_tick = if shift_ticks < 0 {
+                event.expiration_tick.saturating_sub(-shift_ticks as u64)
+            } else {
+                event.expiration_tick.saturating_add(shift_ticks as u64)
+            };
+            event.expiration_tick = new_expiration_tick.max(self.current_tick);
+            self.events.push(event);
+        }
+
+        for event in all_events {
+            self.events.push(event);
+        }
     }
 
     pub fn tick(&mut self) -> Vec<TimedEvent<T>> {
@@ -148,10 +197,6 @@ impl<T> EventScheduler<T> {
         while let Some(event) = self.events.peek() {
             if event.expiration_tick <= self.current_tick {
                 if let Some(event) = self.events.pop() {
-                    self.players_states
-                        .get_mut(&event.player_id)
-                        .unwrap()
-                        .nb_events -= 1;
                     //debug!(
                     //    "Event #{} executing at tick {}",
                     //    event.event_id, self.current_tick
@@ -173,7 +218,7 @@ impl<T> EventScheduler<T> {
     pub fn cancel(&mut self, event_id: Id) -> bool {
         let index = self.events.iter().position(|e| e.event_id == event_id);
 
-        if let Some(index) = index {
+        if index.is_some() {
             let events = std::mem::take(&mut self.events);
             self.events = events
                 .into_iter()
@@ -205,9 +250,9 @@ impl<T> EventScheduler<T> {
             let remaining_ticks = event.expiration_tick.saturating_sub(self.current_tick);
             result.push((event.event_id, remaining_ticks));
 
-            debug!(
-                "Event #{}: exécution dans {} ticks ({}), données: {:?}",
-                event.event_id, remaining_ticks, event.expiration_tick, event.data
+            trace!(
+                "Event #{} by Client {}: exécution dans {} ticks, données: {:?}",
+                event.event_id, event.player_id, remaining_ticks, event.data
             );
         }
 

@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-#![allow(unused_variables)]
 
 mod cell;
 mod connection;
@@ -28,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "0.0.0.0".to_string(),
         4242,
         10,
-        4,
+        10,
         vec!["Team1".to_string(), "Team2".to_string()],
         4,
         50,

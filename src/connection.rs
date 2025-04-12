@@ -13,10 +13,6 @@ use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
-enum InternalEvent {
-    Test,
-}
-
 /// Manages a TCP connection with a client
 pub struct Connection {
     writer: OwnedWriteHalf,
@@ -184,7 +180,7 @@ impl Connection {
         reader_task.abort();
         server_task.abort();
 
-        if let Err(e) = &result {
+        if result.is_err() {
             self.server_tx
                 .send(
                     self.command_handler
@@ -212,7 +208,7 @@ impl Connection {
                 Ok(0) => Err(RecvError::Closed),
                 Ok(MAX_LINE_SIZE) => Err(RecvError::ReachedTakeLimit),
                 Ok(_) => Ok(line),
-                Err(e) => Err(RecvError::InvalidUTF8),
+                Err(_) => Err(RecvError::InvalidUTF8),
             }
         }
 
@@ -275,6 +271,6 @@ impl Connection {
             Ok(())
         })
         .await
-        .unwrap_or_else(|_| Err(ConnectionError::Timeout))
+        .unwrap_or(Err(ConnectionError::Timeout))
     }
 }

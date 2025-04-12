@@ -3,28 +3,29 @@ use crate::event::Event;
 use crate::event::EventScheduler;
 use crate::map::Map;
 use crate::pending::PendingClient;
-use crate::player::{Player, PlayerState};
+use crate::player::{Direction, Player, PlayerState, RelativeDirection};
 use crate::protocol::PendingResponse::{LogAs, Shared};
 use crate::protocol::{
     AIAction, AIResponse, ClientSender, EventType, GameEvent, HasId, Id, PendingAction,
     ServerResponse, SharedAction, SharedResponse, TeamType,
 };
-use crate::resources::Resource;
+use crate::resources::{Resource, Resources, LEVEL_REQUIREMENTS};
 use crate::sound::get_sound_direction;
 use crate::team::Team;
-use crate::vec2::{HasPosition, Size};
+use crate::vec2::{HasPosition, Position, Size};
 use log::{debug, info, warn};
 use rand::Rng;
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::{select, time};
 
+#[derive(Debug)]
 pub struct ServerConfig {
     addr: String,
     port: u16,
@@ -66,7 +67,6 @@ pub struct Server {
     global_channel: ThreadChannel<EventType>,
     tick_interval: time::Interval,
     socket: TcpListener,
-    freq: u64,
     map: Map,
     teams: HashMap<Id, Team>,
     pending_clients: HashMap<Id, PendingClient>,
@@ -85,7 +85,8 @@ const SATIETY_LOSS_PER_TICK: u64 = 1;
 impl Server {
     pub async fn from_config(config: ServerConfig) -> Result<Server, ServerError> {
         let addr = format!("{}:{}", config.addr, config.port);
-        let socket = TcpListener::bind(addr).await?;
+        debug!("Server using config {:?}", config);
+        let socket = TcpListener::bind(&addr).await?;
         let (tx, rx) = mpsc::channel::<EventType>(32);
         let tick_interval = time::interval(time::Duration::from_nanos(
             (1_000_000_000f64 / config.freq as f64) as u64,
@@ -107,7 +108,6 @@ impl Server {
             global_channel: ThreadChannel { tx, rx },
             tick_interval,
             socket,
-            freq: config.freq as u64,
             map,
             teams,
             pending_clients: HashMap::new(),
@@ -153,13 +153,8 @@ impl Server {
     }
 
     fn set_tick_interval(&mut self, freq: u16) {
-        self.freq = freq as u64;
         let freq = (1_000_000_000f64 / freq as f64) as u64;
         self.tick_interval = time::interval(time::Duration::from_nanos(freq));
-    }
-
-    fn freq(&self) -> u64 {
-        self.freq
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
@@ -182,7 +177,7 @@ impl Server {
         }
     }
 
-    fn accept_client(&mut self, socket: TcpStream, addr: SocketAddr) {
+    fn accept_client(&mut self, socket: TcpStream, _: SocketAddr) {
         static CLIENT_ID: AtomicU64 = AtomicU64::new(0);
         let client_id: Id = CLIENT_ID.fetch_add(1, Ordering::Relaxed);
         info!(
@@ -211,6 +206,7 @@ impl Server {
         //print!("\x1B[2J\x1B[1;1H"); // Effacer l'écran et replacer le curseur en haut à gauche
         //println!("{}", self.map);
         //println!("{:?}", self.clients);
+        self.event_scheduler.display_pending_events();
         self.spawn_resources();
         let expired_events = self.event_scheduler.tick();
         for timed_event in expired_events {
@@ -240,9 +236,6 @@ impl Server {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    if emitter.state() == PlayerState::Incantating {
-                        continue;
-                    }
                     emitter
                         .move_forward(&self.map.size())
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
@@ -251,9 +244,6 @@ impl Server {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    if emitter.state() == PlayerState::Incantating {
-                        continue;
-                    }
                     emitter.direction_mut().rotate_right();
                     emitter
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
@@ -262,43 +252,123 @@ impl Server {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    if emitter.state() == PlayerState::Incantating {
-                        continue;
-                    }
                     emitter.direction_mut().rotate_left();
                     emitter
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
                 }
                 Event::Look => {
-                    unreachable!()
+                    let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
+                        continue;
+                    };
+                    let visible_pos = emitter.get_visible_positions();
+                    let mut res = vec![];
+                    for cell_pos in visible_pos {
+                        let converted_pos = self.map.get_pos_signed(cell_pos);
+                        let nb_players_on_cell = self
+                            .clients
+                            .values()
+                            .filter(|client| client.position() == converted_pos)
+                            .count();
+                        let resources_on_cell =
+                            self.map.get_ressources_at_pos(converted_pos).clone();
+                        res.push((nb_players_on_cell as u64, resources_on_cell));
+                    }
+                    self.clients
+                        .get_mut(&timed_event.player_id)
+                        .unwrap()
+                        .send_to_client(ServerResponse::AI(AIResponse::Look(res)));
                 }
                 Event::Inventory => {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    if emitter.state() == PlayerState::Incantating {
-                        continue;
-                    }
                     emitter.send_to_client(ServerResponse::AI(AIResponse::Inventory(
                         emitter.inventory(),
                     )));
                 }
                 Event::ConnectNbr => {
-                    unreachable!()
+                    let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
+                        continue;
+                    };
+                    emitter.send_to_client(ServerResponse::AI(AIResponse::ConnectNbr(
+                        self.map.nb_eggs_by_team(emitter.team_id()),
+                    )));
                 }
                 Event::Fork => {
-                    unreachable!()
+                    let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
+                        continue;
+                    };
+                    self.map.spawn_egg(emitter.team_id(), emitter.position());
+                    //todo egg hatching ? 600 ticks ?
+                    emitter
+                        .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
                 }
                 Event::Eject => {
-                    unreachable!()
+                    let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
+                        continue;
+                    };
+
+                    let (pusher_pos, pusher_direction, pusher_id) =
+                        (emitter.position(), emitter.direction(), emitter.id());
+
+                    let players_on_same_pos: Vec<_> = self
+                        .clients
+                        .iter_mut()
+                        .filter_map(|(_, player)| {
+                            if player.position() == pusher_pos && player.id() != pusher_id {
+                                Some(player)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    let offset = match pusher_direction {
+                        Direction::North => (0, 1),
+                        Direction::East => (1, 0),
+                        Direction::South => (0, -1),
+                        Direction::West => (-1, 0),
+                    };
+                    const RELATIVE_DIRECTIONS: [RelativeDirection; 4] = [
+                        RelativeDirection::Back,
+                        RelativeDirection::Left,
+                        RelativeDirection::Front,
+                        RelativeDirection::Right,
+                    ];
+                    let nb_pushed_players = players_on_same_pos.len();
+                    let new_pos = self
+                        .map
+                        .get_pos_with_offset(pusher_pos, Position::new(offset.0, offset.1));
+                    let direction: i8 = pusher_direction.into();
+                    for player in players_on_same_pos {
+                        player.position_mut().replace(new_pos);
+                        let pushed_dir: i8 = player.direction().into();
+                        let res = (direction - pushed_dir + 4).rem_euclid(4);
+                        let res = RELATIVE_DIRECTIONS[res as usize];
+                        player.send_to_client(ServerResponse::AI(AIResponse::Eject(res.into())));
+                    }
+                    let broken_eggs = self.map.break_eggs_at_pos(pusher_pos);
+                    let emitter = self.clients.get_mut(&timed_event.player_id).unwrap(); //safe since we know the player exists
+                    if nb_pushed_players > 0 || !broken_eggs.is_empty() {
+                        debug!(
+                            "Client {} broke {} eggs and pushed {} players",
+                            emitter.id(),
+                            broken_eggs.len(),
+                            nb_pushed_players
+                        );
+                        emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
+                            SharedResponse::Ok,
+                        )));
+                    } else {
+                        emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
+                            SharedResponse::Ko,
+                        )));
+                    }
                 }
                 Event::Take(resource) => {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    if emitter.state() == PlayerState::Incantating {
-                        continue;
-                    }
                     match self.map.del_resource(resource, 1, emitter.position()) {
                         None => {
                             emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
@@ -318,9 +388,6 @@ impl Server {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    if emitter.state() == PlayerState::Incantating {
-                        continue;
-                    }
                     let res = emitter.del_resource(resource, 1);
                     match res {
                         None => {
@@ -337,7 +404,106 @@ impl Server {
                     }
                 }
                 Event::Incantation => {
-                    unreachable!()
+                    let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
+                        continue;
+                    };
+                    let emitter_pos = emitter.position();
+                    let emitter_level = emitter.level();
+                    let emitter_id = emitter.id();
+                    debug!(
+                        "Incantation requirements for Client {}: {:?}",
+                        emitter.id(),
+                        LEVEL_REQUIREMENTS[&emitter_level]
+                    );
+                    let players_on_tile: Vec<Id> = self
+                        .clients
+                        .iter()
+                        .filter_map(|(id, player)| {
+                            if player.position() == emitter_pos
+                                && !player.is_incantating()
+                                && player.level() == emitter_level
+                            {
+                                Some(*id)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    let resources_on_tile: &Resources = self.map.get_ressources_at_pos(emitter_pos);
+                    let requirement = &LEVEL_REQUIREMENTS[&emitter_level];
+
+                    if players_on_tile.len() < requirement.needed_players()
+                        || !resources_on_tile.has_at_least(requirement.needed_resources())
+                    {
+                        let emitter = self.clients.get_mut(&timed_event.player_id).unwrap();
+                        emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
+                            SharedResponse::Ko,
+                        )));
+                        return;
+                    }
+
+                    for id in &players_on_tile {
+                        let player = self.clients.get_mut(id).unwrap();
+                        *player.state_mut() = PlayerState::Incantating;
+                        player.send_to_client(ServerResponse::AI(AIResponse::Incantating));
+                        if *id != emitter_id {
+                            self.event_scheduler.shift_client_events(*id, 300);
+                            self.event_scheduler
+                                .force_schedule(Event::Phantom, 300, *id);
+                        }
+                        println!("Player {} is now {:?}", id, player.state_mut());
+                    }
+                    let emitter = self.clients.get_mut(&timed_event.player_id).unwrap();
+                    let new_event =
+                        Event::IncantationEnd(players_on_tile, requirement, emitter.position());
+                    self.event_scheduler.schedule(new_event, 300, emitter.id());
+                }
+                Event::IncantationEnd(players_incantating, requirement, incantation_pos) => {
+                    let mut players_still_on_tile: Vec<Id> = vec![];
+
+                    for id in &players_incantating {
+                        if let Some(player) = self.clients.get_mut(id) {
+                            if player.is_incantating() && player.position() == incantation_pos {
+                                *player.state_mut() = PlayerState::Idle;
+                                players_still_on_tile.push(*id);
+                            }
+                        }
+                    }
+
+                    let resources_on_tile: &Resources =
+                        self.map.get_ressources_at_pos(incantation_pos);
+
+                    if players_still_on_tile.len() < requirement.needed_players()
+                        || !resources_on_tile.has_at_least(requirement.needed_resources())
+                    {
+                        for id in &players_incantating {
+                            if let Some(client) = self.clients.get_mut(id) {
+                                client.send_to_client(ServerResponse::AI(AIResponse::Shared(
+                                    SharedResponse::Ko,
+                                )));
+                            }
+                        }
+                        return;
+                    }
+                    for resource_type in Resource::iter() {
+                        let amount = requirement.needed_resources()[resource_type];
+                        if amount > 0 {
+                            self.map
+                                .del_resource(resource_type, amount, incantation_pos);
+                        }
+                    }
+                    for id in &players_still_on_tile {
+                        let client = self.clients.get_mut(id).unwrap();
+                        *client.level_mut() = client.level().upgrade();
+                        client.send_to_client(ServerResponse::AI(AIResponse::LevelUp(
+                            client.level(),
+                        )));
+                    }
+                    debug!(
+                        "Incantation successful for Clients : {:?}",
+                        players_still_on_tile
+                    );
                 }
                 Event::Ko => {
                     if let Some(client) = self.clients.get_mut(&timed_event.player_id) {
@@ -348,6 +514,7 @@ impl Server {
                         continue;
                     }
                 }
+                Event::Phantom => continue,
             }
         }
         self.reduce_satiety();
@@ -357,7 +524,7 @@ impl Server {
         for (id, client) in self.clients.iter_mut() {
             if client.reduce_satiety(SATIETY_LOSS_PER_TICK) == 0 {
                 client.send_to_client(ServerResponse::AI(AIResponse::Dead));
-                info!("Client {} is dead", client.id());
+                info!("Client {} is dead", id);
             }
         }
     }
@@ -368,7 +535,7 @@ impl Server {
             EventType::AI(GameEvent { id, action }) => {
                 self.handle_ai_events((id, action)).await;
             }
-            EventType::GUI(GameEvent { id, action }) => {
+            EventType::GUI(GameEvent { .. }) => {
                 unreachable!()
             }
             EventType::Pending(GameEvent { id, action }) => {
@@ -430,7 +597,7 @@ impl Server {
                 let player = player_builder.build().unwrap();
                 player.send_to_client(ServerResponse::Pending(LogAs(TeamType::IA(
                     self.map.nb_eggs_by_team(team.id()),
-                    player.position(),
+                    self.map.size(),
                 ))));
 
                 self.clients.insert(player.id(), player);
@@ -443,13 +610,11 @@ impl Server {
             AIAction::Shared(shared) => match shared {
                 SharedAction::Disconnected => {
                     self.clients.remove(&id);
-                    self.event_scheduler.del_player(id);
                 }
                 SharedAction::InvalidAction
                 | SharedAction::ReachedTakeLimit
                 | SharedAction::InvalidEncoding => {
-                    let event: Event = Event::Ko;
-                    self.event_scheduler.schedule(event, 0, id);
+                    self.event_scheduler.schedule(Event::Ko, 0, id);
                 }
             },
             AIAction::Action(action) => match action {
@@ -473,7 +638,7 @@ impl Server {
                     self.event_scheduler.schedule(event, 42, id);
                 }
                 event @ Event::Incantation => {
-                    todo!()
+                    self.event_scheduler.schedule(event, 0, id);
                 }
                 _ => {
                     unreachable!()

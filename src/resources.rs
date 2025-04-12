@@ -1,5 +1,8 @@
+use crate::resources::ElevationLevel::*;
 use core::ops::{Index, IndexMut};
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::LazyLock;
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
@@ -29,6 +32,158 @@ impl Resource {
     }
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
+pub enum ElevationLevel {
+    #[default]
+    Level1,
+    Level2,
+    Level3,
+    Level4,
+    Level5,
+    Level6,
+    Level7,
+    Level8,
+}
+
+#[derive(Debug, Clone)]
+pub struct LevelRequirement {
+    players_needed: u64,  // Number of players needed
+    resources: Resources, // Resources needed for the level
+}
+
+impl ElevationLevel {
+    pub fn upgrade(self) -> ElevationLevel {
+        match self {
+            Level1 => Level2,
+            Level2 => Level3,
+            Level3 => Level4,
+            Level4 => Level5,
+            Level5 => Level6,
+            Level6 => Level7,
+            Level7 => Level8,
+            Level8 => Level8,
+        }
+    }
+}
+
+pub struct LevelFormat<'a>(pub &'a ElevationLevel);
+
+impl fmt::Display for LevelFormat<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self.0 {
+                Level1 => 1,
+                Level2 => 2,
+                Level3 => 3,
+                Level4 => 4,
+                Level5 => 5,
+                Level6 => 6,
+                Level7 => 7,
+                Level8 => 8,
+            }
+        )
+    }
+}
+
+impl LevelRequirement {
+    pub fn needed_resources(&self) -> &Resources {
+        &self.resources
+    }
+
+    pub fn needed_players(&self) -> usize {
+        self.players_needed as usize
+    }
+}
+
+pub static LEVEL_REQUIREMENTS: LazyLock<HashMap<ElevationLevel, LevelRequirement>> =
+    LazyLock::new(|| {
+        let mut requirements = HashMap::new();
+
+        requirements.insert(
+            ElevationLevel::Level1,
+            LevelRequirement {
+                players_needed: 1,
+                resources: Resources::builder().linemate(1).build(),
+            },
+        );
+
+        requirements.insert(
+            ElevationLevel::Level2,
+            LevelRequirement {
+                players_needed: 2,
+                resources: Resources::builder()
+                    .linemate(1)
+                    .deraumere(1)
+                    .sibur(1)
+                    .build(),
+            },
+        );
+
+        requirements.insert(
+            Level3,
+            LevelRequirement {
+                players_needed: 2,
+                resources: Resources::builder().linemate(2).sibur(1).phiras(2).build(),
+            },
+        );
+
+        requirements.insert(
+            Level4,
+            LevelRequirement {
+                players_needed: 4,
+                resources: Resources::builder()
+                    .linemate(1)
+                    .deraumere(1)
+                    .sibur(2)
+                    .phiras(1)
+                    .build(),
+            },
+        );
+        requirements.insert(
+            Level5,
+            LevelRequirement {
+                players_needed: 4,
+                resources: Resources::builder()
+                    .linemate(1)
+                    .deraumere(2)
+                    .sibur(1)
+                    .mendiane(3)
+                    .build(),
+            },
+        );
+        requirements.insert(
+            Level6,
+            LevelRequirement {
+                players_needed: 6,
+                resources: Resources::builder()
+                    .linemate(1)
+                    .deraumere(2)
+                    .sibur(3)
+                    .phiras(1)
+                    .build(),
+            },
+        );
+
+        requirements.insert(
+            Level7,
+            LevelRequirement {
+                players_needed: 6,
+                resources: Resources::builder()
+                    .linemate(2)
+                    .deraumere(2)
+                    .sibur(2)
+                    .mendiane(2)
+                    .phiras(2)
+                    .thystame(1)
+                    .build(),
+            },
+        );
+        requirements
+    });
+
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct Resources {
     contents: [u64; Resource::Food as usize + 1],
@@ -41,6 +196,13 @@ impl Resources {
 
     pub fn builder() -> ResourcesBuilder {
         ResourcesBuilder::new()
+    }
+
+    pub fn has_at_least(&self, required: &Resources) -> bool {
+        self.contents
+            .iter()
+            .zip(required.contents.iter())
+            .all(|(available, needed)| available >= needed)
     }
 }
 
@@ -60,7 +222,7 @@ impl IndexMut<Resource> for Resources {
 
 pub struct InventoryFormat<'a>(pub &'a Resources);
 
-impl<'a> fmt::Display for InventoryFormat<'a> {
+impl fmt::Display for InventoryFormat<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let r = self.0;
         write!(

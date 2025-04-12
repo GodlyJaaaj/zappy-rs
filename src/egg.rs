@@ -1,14 +1,14 @@
 use crate::protocol::{HasId, Id};
-use crate::vec2::{HasPosition, Position};
+use crate::vec2::{HasPosition, UPosition};
 
 #[derive(Clone, Debug)]
 pub struct Egg {
     team_id: Id,
-    pos: Position,
+    pos: UPosition,
 }
 
 impl Egg {
-    pub fn new(team_id: Id, pos: Position) -> Self {
+    pub fn new(team_id: Id, pos: UPosition) -> Self {
         Egg { team_id, pos }
     }
 }
@@ -20,11 +20,11 @@ impl HasId for Egg {
 }
 
 impl HasPosition for Egg {
-    fn position(&self) -> Position {
+    fn position(&self) -> UPosition {
         self.pos
     }
 
-    fn position_mut(&mut self) -> &mut Position {
+    fn position_mut(&mut self) -> &mut UPosition {
         &mut self.pos
     }
 }
