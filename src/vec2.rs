@@ -4,23 +4,35 @@ pub struct Vec2<T> {
     pub(crate) y: T,
 }
 
-/// A position in the game
-pub type Position = Vec2<u64>;
+pub type Position = Vec2<i64>;
+/// An unsigned position in the game
+pub type UPosition = Vec2<u64>;
 /// A size in the game
 pub type Size = Vec2<u64>;
 
-impl Vec2<u64> {
+pub trait HasPosition {
+    fn position(&self) -> UPosition;
+
+    fn position_mut(&mut self) -> &mut UPosition;
+}
+
+impl<T: Copy> Vec2<T> {
     /// Create a new Vec2
-    pub fn new(x: u64, y: u64) -> Self {
+    pub fn new(x: T, y: T) -> Self {
         Vec2 { x, y }
     }
     /// Get the x value
-    pub fn x(&self) -> u64 {
+    pub fn x(&self) -> T {
         self.x
     }
     /// Get the y value
-    pub fn y(&self) -> u64 {
+    pub fn y(&self) -> T {
         self.y
+    }
+
+    pub fn replace(&mut self, other: Vec2<T>) {
+        self.x = other.x;
+        self.y = other.y;
     }
 }
 
@@ -43,35 +55,35 @@ mod tests {
 
     #[test]
     fn test_vec2() {
-        let pos = Position::new(1, 2);
+        let pos = UPosition::new(1, 2);
         assert_eq!(pos.x(), 1);
         assert_eq!(pos.y(), 2);
     }
 
     #[test]
     fn test_vec2_from_tuple() {
-        let pos: Position = (1, 2).into();
+        let pos: UPosition = (1, 2).into();
         assert_eq!(pos.x(), 1);
         assert_eq!(pos.y(), 2);
     }
 
     #[test]
     fn test_vec2_eq() {
-        let pos1 = Position::new(1, 2);
-        let pos2 = Position::new(1, 2);
+        let pos1 = UPosition::new(1, 2);
+        let pos2 = UPosition::new(1, 2);
         assert_eq!(pos1, pos2);
     }
 
     #[test]
     fn test_vec2_ne() {
-        let pos1 = Position::new(1, 2);
-        let pos2 = Position::new(2, 1);
+        let pos1 = UPosition::new(1, 2);
+        let pos2 = UPosition::new(2, 1);
         assert_ne!(pos1, pos2);
     }
 
     #[test]
     fn test_vec2_clone() {
-        let pos = Position::new(1, 2);
+        let pos = UPosition::new(1, 2);
         let pos_clone = pos;
         assert_eq!(pos, pos_clone);
     }

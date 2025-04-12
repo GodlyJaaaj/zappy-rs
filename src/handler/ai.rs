@@ -1,11 +1,8 @@
 use crate::event::Event::*;
 use crate::handler::command::State::DEAD;
 use crate::handler::command::{CommandHandler, CommandRes, Handler};
-use crate::protocol::{
-    AIAction, AIEvent, AIResponse, EventType, HasId, Id, ServerResponse, SharedAction,
-    SharedResponse,
-};
-use crate::resources::{InventoryFormat, Resource};
+use crate::protocol::{AIAction, AIEvent, AIResponse, EventType, HasId, Id, LookFormat, ServerResponse, SharedAction, SharedResponse};
+use crate::resources::{InventoryFormat, LevelFormat, Resource};
 
 pub struct AiHandler(Handler);
 
@@ -97,6 +94,15 @@ impl CommandHandler for AiHandler {
                 }
                 AIResponse::Inventory(resources) => {
                     CommandRes::Response(format!("{}\n", InventoryFormat(&resources)))
+                }
+                AIResponse::ConnectNbr(nbr) => CommandRes::Response(format!("{}\n", nbr)),
+                AIResponse::Eject(dir) => CommandRes::Response(format!("eject {}\n", dir)),
+                AIResponse::Incantating => CommandRes::Response("Elevation underway\n".to_string()),
+                AIResponse::LevelUp(new_level) => {
+                    CommandRes::Response(format!("Current level: {}\n", LevelFormat(&new_level)))
+                }
+                AIResponse::Look(look_result) => {
+                    CommandRes::Response(format!("{}\n", LookFormat(&look_result)))
                 }
             },
             ServerResponse::GUI(_) | ServerResponse::Pending(_) => {

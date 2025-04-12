@@ -1,27 +1,29 @@
 use crate::player::{Direction, Player};
-use crate::vec2::Position;
 use crate::vec2::Size;
+use crate::vec2::{HasPosition, UPosition};
 use std::f64::consts::PI;
 
 pub struct Emitter {
-    pos: Position,
+    pos: UPosition,
 }
 
 impl From<&Player> for Emitter {
     fn from(player: &Player) -> Self {
-        Emitter { pos: player.pos() }
+        Emitter {
+            pos: player.position(),
+        }
     }
 }
 
 pub struct Receiver {
-    pos: Position,
+    pos: UPosition,
     direction: Direction,
 }
 
 impl From<&Player> for Receiver {
     fn from(player: &Player) -> Self {
         Receiver {
-            pos: player.pos(),
+            pos: player.position(),
             direction: player.direction(),
         }
     }
@@ -44,7 +46,7 @@ impl From<&Player> for Receiver {
 /// assert_eq!(dy, -3);
 /// ```
 /// * `return` - A tuple containing the shortest path in the x and y directions starting from the start position.
-fn get_shortest_path_torique(start: Position, end: Position, size: Size) -> (i64, i64) {
+fn get_shortest_path_torique(start: UPosition, end: UPosition, size: Size) -> (i64, i64) {
     let (dx, dy) = (
         (end.x() as i64 - start.x() as i64).rem_euclid(size.x() as i64),
         (end.y() as i64 - start.y() as i64).rem_euclid(size.y() as i64),
@@ -88,18 +90,18 @@ pub fn get_sound_direction(emitter: Emitter, receiver: Receiver, size: Size) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vec2::Position;
     use crate::vec2::Size;
+    use crate::vec2::UPosition;
 
     #[test]
     fn test_sound_same_position() {
         let map_size = Size::new(10, 10);
 
         let emitter = Emitter {
-            pos: Position::new(5, 5),
+            pos: UPosition::new(5, 5),
         };
         let receiver = Receiver {
-            pos: Position::new(5, 5),
+            pos: UPosition::new(5, 5),
             direction: Direction::North,
         };
 
@@ -113,10 +115,10 @@ mod tests {
         let map_size = Size::new(21, 21);
 
         let emitter = Emitter {
-            pos: Position::new(20, 20),
+            pos: UPosition::new(20, 20),
         };
         let receiver = Receiver {
-            pos: Position::new(0, 0),
+            pos: UPosition::new(0, 0),
             direction: Direction::South,
         };
 
@@ -130,10 +132,10 @@ mod tests {
         let map_size = Size::new(8, 10);
 
         let emitter = Emitter {
-            pos: Position::new(5, 6),
+            pos: UPosition::new(5, 6),
         };
         let receiver = Receiver {
-            pos: Position::new(3, 2),
+            pos: UPosition::new(3, 2),
             direction: Direction::North,
         };
 
@@ -147,10 +149,10 @@ mod tests {
         let map_size = Size::new(8, 10);
 
         let emitter = Emitter {
-            pos: Position::new(5, 6),
+            pos: UPosition::new(5, 6),
         };
         let receiver = Receiver {
-            pos: Position::new(0, 5),
+            pos: UPosition::new(0, 5),
             direction: Direction::South,
         };
 
@@ -164,10 +166,10 @@ mod tests {
         let map_size = Size::new(8, 10);
 
         let emitter = Emitter {
-            pos: Position::new(5, 6),
+            pos: UPosition::new(5, 6),
         };
         let receiver = Receiver {
-            pos: Position::new(6, 6),
+            pos: UPosition::new(6, 6),
             direction: Direction::East,
         };
 
@@ -181,10 +183,10 @@ mod tests {
         let map_size = Size::new(8, 10);
 
         let emitter = Emitter {
-            pos: Position::new(5, 6),
+            pos: UPosition::new(5, 6),
         };
         let receiver = Receiver {
-            pos: Position::new(0, 7),
+            pos: UPosition::new(0, 7),
             direction: Direction::West,
         };
 
@@ -198,10 +200,10 @@ mod tests {
         let map_size = Size::new(8, 10);
 
         let emitter = Emitter {
-            pos: Position::new(7, 1),
+            pos: UPosition::new(7, 1),
         };
         let receiver = Receiver {
-            pos: Position::new(6, 0),
+            pos: UPosition::new(6, 0),
             direction: Direction::North,
         };
 
@@ -215,10 +217,10 @@ mod tests {
         let map_size = Size::new(8, 10);
 
         let emitter = Emitter {
-            pos: Position::new(2, 4),
+            pos: UPosition::new(2, 4),
         };
         let receiver = Receiver {
-            pos: Position::new(0, 9),
+            pos: UPosition::new(0, 9),
             direction: Direction::North,
         };
 
@@ -232,10 +234,10 @@ mod tests {
         let map_size = Size::new(50, 50);
 
         let emitter = Emitter {
-            pos: Position::new(20, 20),
+            pos: UPosition::new(20, 20),
         };
         let receiver = Receiver {
-            pos: Position::new(0, 0),
+            pos: UPosition::new(0, 0),
             direction: Direction::South,
         };
 
@@ -249,10 +251,10 @@ mod tests {
         let map_size = Size::new(10, 8);
 
         let emitter = Emitter {
-            pos: Position::new(0, 6),
+            pos: UPosition::new(0, 6),
         };
         let receiver = Receiver {
-            pos: Position::new(9, 3),
+            pos: UPosition::new(9, 3),
             direction: Direction::North,
         };
 
@@ -267,10 +269,10 @@ mod tests {
         let map_size = Size::new(10, 8);
 
         let emitter = Emitter {
-            pos: Position::new(9, 3),
+            pos: UPosition::new(9, 3),
         };
         let receiver = Receiver {
-            pos: Position::new(0, 6),
+            pos: UPosition::new(0, 6),
             direction: Direction::North,
         };
 
@@ -285,10 +287,10 @@ mod tests {
         let map_size = Size::new(10, 8);
 
         let emitter = Emitter {
-            pos: Position::new(0, 3),
+            pos: UPosition::new(0, 3),
         };
         let receiver = Receiver {
-            pos: Position::new(9, 6),
+            pos: UPosition::new(9, 6),
             direction: Direction::North,
         };
 
@@ -303,10 +305,10 @@ mod tests {
         let map_size = Size::new(10, 8);
 
         let emitter = Emitter {
-            pos: Position::new(5, 0),
+            pos: UPosition::new(5, 0),
         };
         let receiver = Receiver {
-            pos: Position::new(5, 7),
+            pos: UPosition::new(5, 7),
             direction: Direction::North,
         };
 
@@ -321,10 +323,10 @@ mod tests {
         let map_size = Size::new(10, 8);
 
         let emitter = Emitter {
-            pos: Position::new(0, 3),
+            pos: UPosition::new(0, 3),
         };
         let receiver = Receiver {
-            pos: Position::new(9, 3),
+            pos: UPosition::new(9, 3),
             direction: Direction::North,
         };
 
@@ -339,10 +341,10 @@ mod tests {
         let map_size = Size::new(10, 8);
 
         let emitter = Emitter {
-            pos: Position::new(0, 0),
+            pos: UPosition::new(0, 0),
         };
         let receiver = Receiver {
-            pos: Position::new(9, 7),
+            pos: UPosition::new(9, 7),
             direction: Direction::North,
         };
 
@@ -357,10 +359,10 @@ mod tests {
         let map_size = Size::new(10, 8);
 
         let emitter = Emitter {
-            pos: Position::new(9, 7),
+            pos: UPosition::new(9, 7),
         };
         let receiver = Receiver {
-            pos: Position::new(0, 0),
+            pos: UPosition::new(0, 0),
             direction: Direction::North,
         };
 

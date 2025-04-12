@@ -1,10 +1,10 @@
 [package]
 name = "zappy-rs"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 readme = "README.md"
 repository = "https://github.com/GodlyJaaaj/zappy-rs"
-rust-version = "1.82.0"
+rust-version = "1.86.0"
 keywords = ["zappy", "zappy-rs", "multithreaded", "blazing-fast", "epitech"]
 default-run = "zappy-rs"
 
@@ -13,8 +13,8 @@ name = "zappy-rs"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.44.2", features = ["full"] }
 rand = "0.9.0"
-env_logger = "0.11.7"
+env_logger = "0.11.8"
 log = "0.4.27"
 thiserror = "2.0.12"

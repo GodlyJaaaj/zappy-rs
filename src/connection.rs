@@ -2,20 +2,16 @@ use crate::handler::ai::AiHandler;
 use crate::handler::command::{CommandHandler, CommandRes, State};
 use crate::handler::login::LoginHandler;
 use crate::protocol::{EventType, ServerResponse, SharedAction};
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
-
-enum InternalEvent {
-    Test,
-}
 
 /// Manages a TCP connection with a client
 pub struct Connection {
@@ -184,12 +180,7 @@ impl Connection {
         reader_task.abort();
         server_task.abort();
 
-        info!(
-            "Client {}: Connection handler exiting",
-            self.command_handler.id()
-        );
-
-        if let Err(e) = &result {
+        if result.is_err() {
             self.server_tx
                 .send(
                     self.command_handler
@@ -217,7 +208,7 @@ impl Connection {
                 Ok(0) => Err(RecvError::Closed),
                 Ok(MAX_LINE_SIZE) => Err(RecvError::ReachedTakeLimit),
                 Ok(_) => Ok(line),
-                Err(e) => Err(RecvError::InvalidUTF8),
+                Err(_) => Err(RecvError::InvalidUTF8),
             }
         }
 
@@ -280,6 +271,6 @@ impl Connection {
             Ok(())
         })
         .await
-        .unwrap_or_else(|_| Err(ConnectionError::Timeout))
+        .unwrap_or(Err(ConnectionError::Timeout))
     }
 }

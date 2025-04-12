@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-#![allow(unused_variables)]
 
 mod cell;
 mod connection;
@@ -31,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         10,
         vec!["Team1".to_string(), "Team2".to_string()],
         4,
-        1,
+        50,
     );
     let mut server = Server::from_config(server_config).await?;
     server.run().await?;
