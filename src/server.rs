@@ -269,7 +269,11 @@ impl Server {
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
                     //gui
                     for (.., gui) in &self.guis {
-                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(emitter.id(), emitter.position(), emitter.direction())));
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                            emitter.id(),
+                            emitter.position(),
+                            emitter.direction(),
+                        )));
                     }
                 }
                 Event::Right => {
@@ -281,7 +285,11 @@ impl Server {
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
                     //gui
                     for (.., gui) in &self.guis {
-                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(emitter.id(), emitter.position(), emitter.direction())));
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                            emitter.id(),
+                            emitter.position(),
+                            emitter.direction(),
+                        )));
                     }
                 }
                 Event::Left => {
@@ -294,7 +302,11 @@ impl Server {
 
                     //gui
                     for (.., gui) in &self.guis {
-                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(emitter.id(), emitter.position(), emitter.direction())));
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                            emitter.id(),
+                            emitter.position(),
+                            emitter.direction(),
+                        )));
                     }
                 }
                 Event::Look => {
@@ -393,7 +405,11 @@ impl Server {
                         let res = RELATIVE_DIRECTIONS[res as usize];
                         //gui
                         for (.., gui) in &self.guis {
-                            gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(player.id(), player.position(), player.direction())));
+                            gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                                player.id(),
+                                player.position(),
+                                player.direction(),
+                            )));
                         }
                         player.send_to_client(ServerResponse::AI(AIResponse::Eject(res.into())));
                     }
@@ -429,7 +445,10 @@ impl Server {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    match self.map.del_resource(resource, 1, emitter.position(), &mut self.guis) {
+                    match self
+                        .map
+                        .del_resource(resource, 1, emitter.position(), &mut self.guis)
+                    {
                         None => {
                             emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
                                 SharedResponse::Ko,
@@ -473,7 +492,8 @@ impl Server {
                             )));
                         }
                         Some(resource) => {
-                            self.map.add_resource(resource, 1, emitter.position(), &mut self.guis);
+                            self.map
+                                .add_resource(resource, 1, emitter.position(), &mut self.guis);
 
                             //gui
                             for (.., gui) in &self.guis {
@@ -602,8 +622,12 @@ impl Server {
                     for resource_type in Resource::iter() {
                         let amount = requirement.needed_resources()[resource_type];
                         if amount > 0 {
-                            self.map
-                                .del_resource(resource_type, amount, incantation_pos, &mut self.guis);
+                            self.map.del_resource(
+                                resource_type,
+                                amount,
+                                incantation_pos,
+                                &mut self.guis,
+                            );
                         }
                     }
                     for id in &players_still_on_tile {

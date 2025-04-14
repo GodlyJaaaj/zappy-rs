@@ -2,8 +2,8 @@ use crate::formater::{BctFormat, IdFormat, PinFormat, ResourceFormat};
 use crate::formater::{LevelFormat, UVecFormat};
 use crate::handler::command::{CommandHandler, CommandRes, Handler};
 use crate::protocol::{
-    parse_prefixed_id, EventType, GUIAction, GUIEvent, GUIResponse, HasId, Id, ServerResponse,
-    SharedAction, SharedResponse,
+    EventType, GUIAction, GUIEvent, GUIResponse, HasId, Id, ServerResponse, SharedAction,
+    SharedResponse, parse_prefixed_id,
 };
 use crate::vec2::UPosition;
 
