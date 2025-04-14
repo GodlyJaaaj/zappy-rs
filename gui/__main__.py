@@ -14,7 +14,8 @@ else:
 def main():
     """Main entry point for the application"""
     app = QApplication(sys.argv)
-    app.setStyle('macOS')
+    # Use Fusion style which is available on all platforms
+    app.setStyle('Fusion')
     
     window = ZappyMainWindow()
     window.show()

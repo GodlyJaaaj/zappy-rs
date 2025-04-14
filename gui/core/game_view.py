@@ -347,6 +347,11 @@ class GameView(QWidget):
         if hasattr(self, 'view') and hasattr(self, 'scene') and self.scene.sceneRect():
             self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
     
+    # def reset_camera(self):
+    #     """Reset the camera to fit the entire map in view"""
+    #     if self.scene and self.scene.sceneRect():
+    #         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+    
     # Public methods to update the game state
     
     def update_tile(self, x, y, resources):

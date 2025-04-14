@@ -5,6 +5,11 @@ import socket
 import threading
 import queue
 import time
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("ZappyConnection")
 
 
 class ServerConnection:
@@ -29,11 +34,14 @@ class ServerConnection:
         """Connect to the server"""
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(10)  # Add timeout for connection attempts
             self.socket.connect((self.host, self.port))
+            self.socket.settimeout(None)  # Remove timeout for normal operation
             
             # Wait for welcome message
             welcome = self.socket.recv(4096).decode('utf-8').strip()
             if "WELCOME" not in welcome:
+                logger.error(f"Invalid welcome message: {welcome}")
                 self.disconnect()
                 return False
             
@@ -49,10 +57,19 @@ class ServerConnection:
             
             # Request initial game state
             self._request_initial_state()
+            logger.info(f"Connected to server {self.host}:{self.port}")
             
             return True
+        except socket.timeout:
+            logger.error(f"Connection timed out to {self.host}:{self.port}")
+            self.disconnect()
+            return False
+        except ConnectionRefusedError:
+            logger.error(f"Connection refused to {self.host}:{self.port}")
+            self.disconnect()
+            return False
         except Exception as e:
-            print(f"Connection error: {e}")
+            logger.error(f"Connection error: {e}", exc_info=True)
             self.disconnect()
             return False
     
@@ -76,17 +93,24 @@ class ServerConnection:
         if self.socket:
             try:
                 self.socket.close()
-            except:
-                pass
+                logger.info("Socket closed")
+            except Exception as e:
+                logger.error(f"Error closing socket: {e}")
             self.socket = None
             
-        if self.receive_thread and self.receive_thread.is_alive():
+        # Only try to join the thread if it's not the current thread
+        if self.receive_thread and self.receive_thread.is_alive() and self.receive_thread != threading.current_thread():
             self.receive_thread.join(timeout=1.0)
+            if self.receive_thread.is_alive():
+                logger.warning("Receive thread did not terminate properly")
+            self.receive_thread = None
+        else:
             self.receive_thread = None
     
     def send_command(self, command):
         """Send a command to the server"""
         if not self.connected or not self.socket:
+            logger.warning(f"Cannot send command: not connected ({command})")
             return False
         
         try:
@@ -94,8 +118,12 @@ class ServerConnection:
                 command += '\n'
             self.socket.sendall(command.encode('utf-8'))
             return True
+        except ConnectionError as e:
+            logger.error(f"Connection error while sending command: {e}")
+            self.disconnect()
+            return False
         except Exception as e:
-            print(f"Send error: {e}")
+            logger.error(f"Error sending command: {e}", exc_info=True)
             self.disconnect()
             return False
     
@@ -119,6 +147,7 @@ class ServerConnection:
             try:
                 data = self.socket.recv(4096)
                 if not data:  # Connection closed
+                    logger.info("Server closed connection")
                     self.disconnect()
                     break
                 
@@ -135,8 +164,12 @@ class ServerConnection:
                         # Add to queue for GUI processing
                         self.response_queue.put(line)
                         
+            except ConnectionError as e:
+                logger.error(f"Connection error in receive loop: {e}")
+                self.disconnect()
+                break
             except Exception as e:
-                print(f"Receive error: {e}")
+                logger.error(f"Error in receive loop: {e}", exc_info=True)
                 self.disconnect()
                 break
     
@@ -150,7 +183,7 @@ class ServerConnection:
         
         try:
             # New player connection
-            if cmd == "pnw" and len(parts) >= 6:
+            if cmd == "pnw" and len(parts) >= 7:  # Fixed the condition: pnw has 7 parts
                 # pnw #n X Y O L N - new player connection
                 player_id = int(parts[1][1:])  # Remove the # prefix
                 level = int(parts[5])
@@ -226,7 +259,7 @@ class ServerConnection:
                 self.response_queue.put(f"win_condition {winning_team}")
                 
         except Exception as e:
-            print(f"Error preprocessing event: {e} - Event: {event}")
+            logger.error(f"Error preprocessing event: {e} - Event: {event}", exc_info=True)
     
     def check_win_condition(self):
         """Check if any team has met the win condition (6+ players at level 8)"""

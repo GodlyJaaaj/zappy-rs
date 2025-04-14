@@ -263,6 +263,10 @@ class ResourceViewer(QWidget):
                 expected_count = total_tiles * self.resource_densities[i]
                 self.density_table.item(i, 2).setText(f"{int(expected_count)}")
     
+    def update_map_size(self, width, height):
+        """Alias for set_map_size to maintain compatibility"""
+        self.set_map_size(width, height)
+    
     def add_tile_resources(self, resources):
         """Add resources from a tile to the total count"""
         # Add each resource type to our counter

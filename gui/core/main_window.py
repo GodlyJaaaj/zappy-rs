@@ -4,7 +4,8 @@ Main window for the Zappy GUI
 import sys
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QDockWidget, QSplitter, QMessageBox, QInputDialog, QLineEdit, QStatusBar
+    QDockWidget, QSplitter, QMessageBox, QInputDialog, QLineEdit, QStatusBar,
+    QTabWidget
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon, QFont, QAction
@@ -18,44 +19,35 @@ from .team_panel import TeamPanel
 from .player_panel import PlayerPanel
 
 
-class MainWindow(QMainWindow):
-    """Main window for the Zappy GUI"""
+class ZappyMainWindow(QMainWindow):
+    """Main window for the Zappy GUI application"""
     
     def __init__(self):
         super().__init__()
         
-        # Instance variables
-        self.server_connection = None
-        self.game_view = None
-        self.map_controls = None
-        self.resource_viewer = None
-        self.log_viewer = None
-        self.team_panel = None
-        self.player_panel = None
-        self.timer = None
+        # Set up the main window
+        self.setWindowTitle("Zappy GUI")
+        self.resize(1200, 800)
+        
+        # Initialize components
+        self.server_connection = None  # Initialize as None instead of creating an instance
         self.map_width = 0
         self.map_height = 0
         self.time_unit = 100  # Default time unit
         self.teams = []
-        self.last_update = 0
         self.game_over = False
         self.winning_team = None
         
-        # Set up UI
-        self.setWindowTitle("Zappy GUI")
-        self.setGeometry(100, 100, 1200, 800)
-        self.setup_ui()
-        
-        # Show connect dialog by default
-        self.show_connect_dialog()
-    
-    def setup_ui(self):
-        """Set up the main window UI components"""
-        # Create central widget with game view
+        # Create central layout with game view and tabs
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
+        # Main layout contains the header, game view and tabs in a vertical arrangement
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Add connection header
+        self.create_connection_header(main_layout)
         
         # Add win condition banner (hidden by default)
         self.win_banner = QLabel()
@@ -65,116 +57,144 @@ class MainWindow(QMainWindow):
         self.win_banner.hide()
         main_layout.addWidget(self.win_banner)
         
-        # Game view
-        self.game_view = GameView()
-        
-        # Map controls
-        self.map_controls = MapControls()
-        self.map_controls.on_speed_changed.connect(self.handle_speed_change)
-        
-        # Create a splitter for resizable panels
+        # Create a splitter to allow resizing between game view and tabs
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(splitter)
+        main_layout.addWidget(splitter, 1)
         
-        # Game view and controls in the center
-        center_widget = QWidget()
-        center_layout = QVBoxLayout(center_widget)
-        center_layout.addWidget(self.game_view)
-        center_layout.addWidget(self.map_controls)
-        splitter.addWidget(center_widget)
+        # Game view on the left
+        self.game_view = GameView()
+        splitter.addWidget(self.game_view)
         
-        # Right panel for resources, game info, etc.
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
+        # Create tab widget on the right
+        self.tabs = QTabWidget()
+        splitter.addWidget(self.tabs)
         
-        # Game info section
-        info_section = QWidget()
-        info_layout = QVBoxLayout(info_section)
+        # Create all modules as tabs
+        self.create_tabs()
         
-        # Current time unit
-        time_unit_layout = QHBoxLayout()
-        time_unit_layout.addWidget(QLabel("Time Unit (f):"))
-        self.time_unit_label = QLabel("100")
-        self.time_unit_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        time_unit_layout.addWidget(self.time_unit_label)
-        time_unit_layout.addStretch()
-        info_layout.addLayout(time_unit_layout)
+        # Set initial splitter sizes (70% game view, 30% tabs)
+        splitter.setSizes([700, 300])
         
-        # Map size
-        map_size_layout = QHBoxLayout()
-        map_size_layout.addWidget(QLabel("Map Size:"))
-        self.map_size_label = QLabel("0 x 0")
-        self.map_size_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        map_size_layout.addWidget(self.map_size_label)
-        map_size_layout.addStretch()
-        info_layout.addLayout(map_size_layout)
-        
-        # Win condition description
-        win_cond_label = QLabel("Win Condition: 6 players at level 8")
-        win_cond_label.setStyleSheet("font-style: italic;")
-        info_layout.addWidget(win_cond_label)
-        
-        right_layout.addWidget(info_section)
-        
-        # Resource viewer
-        self.resource_viewer = ResourceViewer()
-        right_layout.addWidget(self.resource_viewer)
-        
-        splitter.addWidget(right_panel)
-        
-        # Set initial splitter sizes
-        splitter.setSizes([700, 500])
-        
-        # Create dockable panels
-        self.create_dock_widgets()
-        
-        # Set up status bar
+        # Create status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Not connected")
+        self.status_bar.showMessage("Disconnected")
         
-        # Set up menu bar
+        # Create menu bar
         self.create_menu_bar()
         
         # Timer for updates
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_game_state)
         self.timer.start(100)  # Update every 100ms
+        
+        # No automatic connection dialog at startup
+        
+    def create_connection_header(self, main_layout):
+        """Create the connection header at the top of the window"""
+        header_widget = QWidget()
+        header_widget.setStyleSheet("background-color: #f0f0f0; border-bottom: 1px solid #ddd;")
+        header_layout = QHBoxLayout(header_widget)
+        
+        # Server info section
+        server_section = QWidget()
+        server_layout = QHBoxLayout(server_section)
+        server_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Host input
+        server_layout.addWidget(QLabel("Host:"))
+        self.host_input = QLineEdit("localhost")
+        self.host_input.setFixedWidth(150)
+        server_layout.addWidget(self.host_input)
+        
+        # Port input
+        server_layout.addWidget(QLabel("Port:"))
+        self.port_input = QLineEdit("4242")
+        self.port_input.setFixedWidth(80)
+        server_layout.addWidget(self.port_input)
+        
+        # Connect button
+        self.connect_button = QPushButton("Connect")
+        self.connect_button.clicked.connect(self.connect_from_header)
+        server_layout.addWidget(self.connect_button)
+        
+        # Disconnect button
+        self.disconnect_button = QPushButton("Disconnect")
+        self.disconnect_button.clicked.connect(self.disconnect_from_server)
+        self.disconnect_button.setEnabled(False)
+        server_layout.addWidget(self.disconnect_button)
+        
+        header_layout.addWidget(server_section)
+        
+        # Status indicator
+        self.connection_status = QLabel("Status: Disconnected")
+        self.connection_status.setStyleSheet("font-weight: bold; color: #d32f2f;")
+        header_layout.addWidget(self.connection_status)
+        
+        # Game info section (map size, time unit)
+        game_info_section = QWidget()
+        game_info_layout = QHBoxLayout(game_info_section)
+        game_info_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Map size
+        game_info_layout.addWidget(QLabel("Map:"))
+        self.map_size_label = QLabel("0 x 0")
+        game_info_layout.addWidget(self.map_size_label)
+        
+        # Time unit
+        game_info_layout.addWidget(QLabel("Time Unit:"))
+        self.time_unit_label = QLabel("100")
+        game_info_layout.addWidget(self.time_unit_label)
+        
+        header_layout.addWidget(game_info_section)
+        header_layout.addStretch(1)
+        
+        # Add header to main layout
+        main_layout.addWidget(header_widget)
     
-    def create_dock_widgets(self):
-        """Create dockable panels"""
-        # Team panel
+    def connect_from_header(self):
+        """Connect to server using the header input fields"""
+        host = self.host_input.text()
+        port_text = self.port_input.text()
+        
+        try:
+            port = int(port_text)
+            self.connect_to_server(host, port)
+        except ValueError:
+            QMessageBox.critical(
+                self, "Connection Error", "Invalid port number"
+            )
+    
+    def create_tabs(self):
+        """Create tabs for all the modules"""
+        
+        # Map controls tab
+        self.map_controls = MapControls()
+        self.tabs.addTab(self.map_controls, "Map Controls")
+        
+        # Resource viewer tab
+        self.resource_viewer = ResourceViewer()
+        self.tabs.addTab(self.resource_viewer, "Resources")
+        
+        # Team panel tab
         self.team_panel = TeamPanel()
-        team_dock = QDockWidget("Teams", self)
-        team_dock.setWidget(self.team_panel)
-        team_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | 
-                             QDockWidget.DockWidgetFeature.DockWidgetFloatable)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, team_dock)
+        self.tabs.addTab(self.team_panel, "Teams")
         
-        # Player panel
+        # Player panel tab
         self.player_panel = PlayerPanel()
-        player_dock = QDockWidget("Players", self)
-        player_dock.setWidget(self.player_panel)
-        player_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | 
-                               QDockWidget.DockWidgetFeature.DockWidgetFloatable)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, player_dock)
+        self.tabs.addTab(self.player_panel, "Players")
         
-        # Log viewer
+        # Log viewer tab
         self.log_viewer = LogViewer()
-        log_dock = QDockWidget("Log", self)
-        log_dock.setWidget(self.log_viewer)
-        log_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | 
-                            QDockWidget.DockWidgetFeature.DockWidgetFloatable)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, log_dock)
+        self.tabs.addTab(self.log_viewer, "Logs")
     
     def create_menu_bar(self):
-        """Create menu bar"""
+        """Create the main window menu bar"""
         menu_bar = self.menuBar()
         
         # File menu
         file_menu = menu_bar.addMenu("&File")
         
-        # Connect action
         connect_action = QAction("&Connect to Server", self)
         connect_action.triggered.connect(self.show_connect_dialog)
         file_menu.addAction(connect_action)
@@ -188,8 +208,7 @@ class MainWindow(QMainWindow):
         
         file_menu.addSeparator()
         
-        # Exit action
-        exit_action = QAction("E&xit", self)
+        exit_action = QAction("&Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
@@ -200,62 +219,83 @@ class MainWindow(QMainWindow):
         reset_camera_action = QAction("Reset Camera", self)
         reset_camera_action.triggered.connect(self.reset_camera)
         view_menu.addAction(reset_camera_action)
-    
-    def show_connect_dialog(self):
-        """Show dialog to connect to server"""
-        host, ok = QInputDialog.getText(self, "Connect to Server", "Host:", 
-                                      QLineEdit.EchoMode.Normal, "localhost")
-        if not ok:
-            return
         
-        port, ok = QInputDialog.getText(self, "Connect to Server", "Port:", 
-                                      QLineEdit.EchoMode.Normal, "4242")
-        if not ok:
-            return
+        # Help menu
+        help_menu = menu_bar.addMenu("&Help")
         
-        try:
-            port = int(port)
-        except ValueError:
-            QMessageBox.critical(self, "Error", "Invalid port number")
-            return
-        
-        self.connect_to_server(host, port)
-    
-    def connect_to_server(self, host, port):
-        """Connect to Zappy server"""
-        # Disconnect if already connected
-        if self.server_connection and self.server_connection.connected:
-            self.disconnect_from_server()
-        
-        # Create new connection
-        self.server_connection = ServerConnection(host, port)
-        
-        # Attempt connection
-        if self.server_connection.connect():
-            self.status_bar.showMessage(f"Connected to {host}:{port}")
-            self.disconnect_action.setEnabled(True)
-            self.log_viewer.add_log_entry("Connected to server", "server")
-        else:
-            QMessageBox.critical(self, "Connection Error", f"Could not connect to {host}:{port}")
-            self.server_connection = None
-    
-    def disconnect_from_server(self):
-        """Disconnect from server"""
-        if self.server_connection:
-            self.server_connection.disconnect()
-            self.server_connection = None
-            self.status_bar.showMessage("Disconnected")
-            self.disconnect_action.setEnabled(False)
-            self.log_viewer.add_log_entry("Disconnected from server", "server")
+        about_action = QAction("&About", self)
+        about_action.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about_action)
     
     def reset_camera(self):
         """Reset game view camera to default position"""
         if self.game_view:
             self.game_view.reset_camera()
     
-    def handle_speed_change(self, speed):
-        """Handle speed change from map controls"""
-        pass  # Future implementation
+    def show_connect_dialog(self):
+        """Show dialog to connect to the server"""
+        host, ok = QInputDialog.getText(
+            self, "Connect to Server", "Server Host:", 
+            QLineEdit.EchoMode.Normal, "localhost"
+        )
+        
+        if ok and host:
+            port, ok = QInputDialog.getText(
+                self, "Connect to Server", "Server Port:",
+                QLineEdit.EchoMode.Normal, "4242"
+            )
+            
+            if ok and port:
+                try:
+                    port = int(port)
+                    self.connect_to_server(host, port)
+                except ValueError:
+                    QMessageBox.critical(
+                        self, "Connection Error", "Invalid port number"
+                    )
+    
+    def connect_to_server(self, host, port):
+        """Connect to the server with the given host and port"""
+        try:
+            # Create new connection with host and port parameters
+            self.server_connection = ServerConnection(host, port)
+            self.server_connection.connect()
+            
+            # Update UI elements
+            self.status_bar.showMessage(f"Connected to {host}:{port}")
+            self.connection_status.setText(f"Status: Connected to {host}:{port}")
+            self.connection_status.setStyleSheet("font-weight: bold; color: #4CAF50;")
+            self.disconnect_action.setEnabled(True)
+            self.disconnect_button.setEnabled(True)
+            self.connect_button.setEnabled(False)
+            
+            # Update host/port input fields
+            self.host_input.setText(host)
+            self.port_input.setText(str(port))
+            
+            # Log connection
+            self.log_viewer.add_log(f"Connected to {host}:{port}", "connection")
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Connection Error", f"Failed to connect: {str(e)}"
+            )
+    
+    def disconnect_from_server(self):
+        """Disconnect from server"""
+        if self.server_connection:
+            self.server_connection.disconnect()
+            self.server_connection = None
+            
+            # Update UI elements
+            self.status_bar.showMessage("Disconnected")
+            self.connection_status.setText("Status: Disconnected")
+            self.connection_status.setStyleSheet("font-weight: bold; color: #d32f2f;")
+            self.disconnect_action.setEnabled(False)
+            self.disconnect_button.setEnabled(False)
+            self.connect_button.setEnabled(True)
+            
+            # Log disconnection
+            self.log_viewer.add_log("Disconnected from server", "connection")
     
     def update_game_state(self):
         """Update game state with new data from server"""
@@ -272,7 +312,7 @@ class MainWindow(QMainWindow):
     def process_server_response(self, response):
         """Process a response from the server"""
         # Log the response
-        self.log_viewer.add_log_entry(response, "server")
+        self.log_viewer.add_log(response, "server")
         
         parts = response.split()
         if not parts:
@@ -285,20 +325,30 @@ class MainWindow(QMainWindow):
             if cmd == "msz" and len(parts) >= 3:
                 self.map_width = int(parts[1])
                 self.map_height = int(parts[2])
-                self.map_size_label.setText(f"{self.map_width} x {self.map_height}")
                 
                 # Update game view with map size
                 if self.game_view:
                     self.game_view.set_map_size(self.map_width, self.map_height)
                 
+                # Update map controls with map size
+                if self.map_controls:
+                    self.map_controls.set_map_size(self.map_width, self.map_height)
+                
                 # Update resource viewer with map size
                 if self.resource_viewer:
                     self.resource_viewer.update_map_size(self.map_width, self.map_height)
+                
+                # Update map size in header
+                self.update_map_size_in_header()
             
             # Time unit
             elif cmd == "sgt" and len(parts) >= 2:
                 self.time_unit = int(parts[1])
-                self.time_unit_label.setText(str(self.time_unit))
+                if self.map_controls:
+                    self.map_controls.set_time_unit(self.time_unit)
+                
+                # Update time unit in header
+                self.update_time_unit_in_header()
             
             # Team name
             elif cmd == "tna" and len(parts) >= 2:
@@ -334,11 +384,17 @@ class MainWindow(QMainWindow):
                 
                 # Update player panel
                 if self.player_panel:
-                    self.player_panel.add_player(player_id, team_name, level)
+                    self.player_panel.add_player(player_id, x, y, orientation, level, team_name)
                 
                 # Update team panel
                 if self.team_panel:
-                    self.team_panel.add_player_to_team(team_name, player_id, level)
+                    self.team_panel.add_player_to_team(team_name, player_id)
+                
+                # Add player to map controls follow list
+                if self.map_controls:
+                    self.map_controls.add_player_to_follow(player_id, team_name)
+                
+                self.log_viewer.add_player_log(f"Player #{player_id} (team {team_name}) joined at level {level}")
             
             # Player position
             elif cmd == "ppo" and len(parts) >= 5:
@@ -350,6 +406,10 @@ class MainWindow(QMainWindow):
                 # Update game view with player position
                 if self.game_view:
                     self.game_view.update_player_position(player_id, x, y, orientation)
+                
+                # Update player panel
+                if self.player_panel:
+                    self.player_panel.update_player_position(player_id, x, y, orientation)
             
             # Player level
             elif cmd == "plv" and len(parts) >= 3:
@@ -367,6 +427,26 @@ class MainWindow(QMainWindow):
                 # Update team panel
                 if self.team_panel:
                     self.team_panel.update_player_level(player_id, level)
+                
+                self.log_viewer.add_player_log(f"Player #{player_id} is now level {level}")
+            
+            # Player inventory
+            elif cmd == "pin" and len(parts) >= 10:
+                player_id = int(parts[1][1:])  # Remove the # prefix
+                x = int(parts[2])
+                y = int(parts[3])
+                resources = {
+                    "food": int(parts[4]),
+                    "linemate": int(parts[5]),
+                    "deraumere": int(parts[6]),
+                    "sibur": int(parts[7]),
+                    "mendiane": int(parts[8]),
+                    "phiras": int(parts[9]),
+                    "thystame": int(parts[10])
+                }
+                
+                if self.player_panel:
+                    self.player_panel.update_player_inventory(player_id, resources)
             
             # Player death
             elif cmd == "pdi" and len(parts) >= 2:
@@ -382,7 +462,13 @@ class MainWindow(QMainWindow):
                 
                 # Update team panel
                 if self.team_panel:
-                    self.team_panel.remove_player(player_id)
+                    self.team_panel.remove_player_from_team(player_id)
+                
+                # Remove player from follow list in map controls
+                if self.map_controls:
+                    self.map_controls.remove_player_from_follow(player_id)
+                
+                self.log_viewer.add_player_log(f"Player #{player_id} died")
             
             # Start of incantation
             elif cmd == "pic" and len(parts) >= 4:
@@ -394,6 +480,11 @@ class MainWindow(QMainWindow):
                 # Update game view with incantation
                 if self.game_view:
                     self.game_view.start_incantation(x, y, level, players)
+                
+                player_str = ", ".join([f"#{p}" for p in players])
+                self.log_viewer.add_incantation_log(
+                    f"Incantation started at ({x}, {y}) for level {level+1} by players {player_str}"
+                )
             
             # End of incantation
             elif cmd == "pie" and len(parts) >= 4:
@@ -404,7 +495,12 @@ class MainWindow(QMainWindow):
                 # Update game view with end of incantation
                 if self.game_view:
                     self.game_view.end_incantation(x, y, result)
-            
+                
+                status = "succeeded" if result == 1 else "failed"
+                self.log_viewer.add_incantation_log(
+                    f"Incantation at ({x}, {y}) {status}"
+                )
+                
             # End of game
             elif cmd == "seg" and len(parts) >= 2:
                 winning_team = parts[1]
@@ -418,6 +514,16 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error processing response: {e} - Response: {response}")
     
+    def update_map_size_in_header(self):
+        """Update the map size display in the header"""
+        if hasattr(self, 'map_size_label'):
+            self.map_size_label.setText(f"{self.map_width} x {self.map_height}")
+    
+    def update_time_unit_in_header(self):
+        """Update the time unit display in the header"""
+        if hasattr(self, 'time_unit_label'):
+            self.time_unit_label.setText(f"{self.time_unit} ms")
+    
     def handle_game_over(self, winning_team):
         """Handle game over event"""
         if self.game_over:
@@ -428,12 +534,27 @@ class MainWindow(QMainWindow):
         
         # Show win banner
         self.win_banner.setText(f"Team {winning_team} WINS! 🏆 (6 players reached level 8)")
+        self.win_banner.setStyleSheet("background-color: #4CAF50; color: white; padding: 10px; font-weight: bold;")
         self.win_banner.show()
         
         # Log to console
-        self.log_viewer.add_log_entry(f"GAME OVER: Team {winning_team} WINS!", "system")
+        self.log_viewer.add_log(f"GAME OVER: Team {winning_team} WINS!", "game")
+        
+        # Update UI to reflect game over state
+        if self.disconnect_button:
+            self.disconnect_button.setEnabled(True)
+        if hasattr(self, 'disconnect_action'):
+            self.disconnect_action.setEnabled(True)
         
         # Show message box
         QMessageBox.information(self, "Game Over", 
                                f"Team {winning_team} has won the game!\n\n"
                                f"Six players from team {winning_team} have reached level 8.")
+    
+    def show_about_dialog(self):
+        """Show about dialog with information about the application"""
+        QMessageBox.about(
+            self, "About Zappy GUI",
+            "Zappy GUI Client\n\n"
+            "A graphical client for visualizing the Zappy game server."
+        )
