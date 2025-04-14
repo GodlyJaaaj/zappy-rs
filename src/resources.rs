@@ -1,7 +1,7 @@
 use crate::resources::ElevationLevel::*;
+use crate::resources::Resource::{Deraumere, Food, Linemate, Mendiane, Phiras, Sibur, Thystame};
 use core::ops::{Index, IndexMut};
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::LazyLock;
 
 #[derive(Debug, PartialEq)]
@@ -20,13 +20,13 @@ pub enum Resource {
 impl Resource {
     pub fn iter() -> impl Iterator<Item = Resource> {
         [
-            Resource::Deraumere,
-            Resource::Linemate,
-            Resource::Mendiane,
-            Resource::Phiras,
-            Resource::Sibur,
-            Resource::Thystame,
-            Resource::Food,
+            Deraumere,
+            Linemate,
+            Mendiane,
+            Phiras,
+            Sibur,
+            Thystame,
+            Food,
         ]
         .into_iter()
     }
@@ -35,6 +35,7 @@ impl Resource {
 #[repr(u8)]
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
 pub enum ElevationLevel {
+    Level0,
     #[default]
     Level1,
     Level2,
@@ -55,6 +56,7 @@ pub struct LevelRequirement {
 impl ElevationLevel {
     pub fn upgrade(self) -> ElevationLevel {
         match self {
+            Level0 => Level1,
             Level1 => Level2,
             Level2 => Level3,
             Level3 => Level4,
@@ -64,27 +66,6 @@ impl ElevationLevel {
             Level7 => Level8,
             Level8 => Level8,
         }
-    }
-}
-
-pub struct LevelFormat<'a>(pub &'a ElevationLevel);
-
-impl fmt::Display for LevelFormat<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self.0 {
-                Level1 => 1,
-                Level2 => 2,
-                Level3 => 3,
-                Level4 => 4,
-                Level5 => 5,
-                Level6 => 6,
-                Level7 => 7,
-                Level8 => 8,
-            }
-        )
     }
 }
 
@@ -103,7 +84,7 @@ pub static LEVEL_REQUIREMENTS: LazyLock<HashMap<ElevationLevel, LevelRequirement
         let mut requirements = HashMap::new();
 
         requirements.insert(
-            ElevationLevel::Level1,
+            Level1,
             LevelRequirement {
                 players_needed: 1,
                 resources: Resources::builder().linemate(1).build(),
@@ -111,7 +92,7 @@ pub static LEVEL_REQUIREMENTS: LazyLock<HashMap<ElevationLevel, LevelRequirement
         );
 
         requirements.insert(
-            ElevationLevel::Level2,
+            Level2,
             LevelRequirement {
                 players_needed: 2,
                 resources: Resources::builder()
@@ -220,25 +201,6 @@ impl IndexMut<Resource> for Resources {
     }
 }
 
-pub struct InventoryFormat<'a>(pub &'a Resources);
-
-impl fmt::Display for InventoryFormat<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let r = self.0;
-        write!(
-            f,
-            "[deraumere {}, linemate {}, mendiane {}, phiras {}, sibur {}, thystame {}, food {}]",
-            r[Resource::Deraumere],
-            r[Resource::Linemate],
-            r[Resource::Mendiane],
-            r[Resource::Phiras],
-            r[Resource::Sibur],
-            r[Resource::Thystame],
-            r[Resource::Food]
-        )
-    }
-}
-
 pub struct ResourcesBuilder {
     resources: Resources,
 }
@@ -250,37 +212,37 @@ impl ResourcesBuilder {
         }
     }
     pub fn deraumere(mut self, amount: u64) -> Self {
-        self.resources[Resource::Deraumere] = amount;
+        self.resources[Deraumere] = amount;
         self
     }
 
     pub fn linemate(mut self, amount: u64) -> Self {
-        self.resources[Resource::Linemate] = amount;
+        self.resources[Linemate] = amount;
         self
     }
 
     pub fn mendiane(mut self, amount: u64) -> Self {
-        self.resources[Resource::Mendiane] = amount;
+        self.resources[Mendiane] = amount;
         self
     }
 
     pub fn phiras(mut self, amount: u64) -> Self {
-        self.resources[Resource::Phiras] = amount;
+        self.resources[Phiras] = amount;
         self
     }
 
     pub fn sibur(mut self, amount: u64) -> Self {
-        self.resources[Resource::Sibur] = amount;
+        self.resources[Sibur] = amount;
         self
     }
 
     pub fn thystame(mut self, amount: u64) -> Self {
-        self.resources[Resource::Thystame] = amount;
+        self.resources[Thystame] = amount;
         self
     }
 
     pub fn food(mut self, amount: u64) -> Self {
-        self.resources[Resource::Food] = amount;
+        self.resources[Food] = amount;
         self
     }
 
@@ -307,9 +269,9 @@ mod tests {
             .food(10)
             .build();
 
-        assert_eq!(resources[Resource::Deraumere], 5);
-        assert_eq!(resources[Resource::Linemate], 3);
-        assert_eq!(resources[Resource::Food], 10);
-        assert_eq!(resources[Resource::Mendiane], 0);
+        assert_eq!(resources[Deraumere], 5);
+        assert_eq!(resources[Linemate], 3);
+        assert_eq!(resources[Food], 10);
+        assert_eq!(resources[Mendiane], 0);
     }
 }

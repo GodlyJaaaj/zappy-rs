@@ -1,8 +1,12 @@
 use crate::event::Event::*;
+use crate::formater::{InventoryFormat, LevelFormat, LookFormat};
 use crate::handler::command::State::DEAD;
 use crate::handler::command::{CommandHandler, CommandRes, Handler};
-use crate::protocol::{AIAction, AIEvent, AIResponse, EventType, HasId, Id, LookFormat, ServerResponse, SharedAction, SharedResponse};
-use crate::resources::{InventoryFormat, LevelFormat, Resource};
+use crate::protocol::{
+    AIAction, AIEvent, AIResponse, EventType, HasId, Id, ServerResponse, SharedAction,
+    SharedResponse,
+};
+use crate::resources::Resource;
 
 pub struct AiHandler(Handler);
 
@@ -10,7 +14,28 @@ impl AiHandler {
     pub(crate) fn new(id: u64) -> Self {
         AiHandler(Handler { id })
     }
+}
 
+fn parse_resource(resource_name: &str) -> Option<Resource> {
+    match resource_name {
+        "food" => Some(Resource::Food),
+        "linemate" => Some(Resource::Linemate),
+        "deraumere" => Some(Resource::Deraumere),
+        "sibur" => Some(Resource::Sibur),
+        "mendiane" => Some(Resource::Mendiane),
+        "phiras" => Some(Resource::Phiras),
+        "thystame" => Some(Resource::Thystame),
+        _ => None,
+    }
+}
+
+impl HasId for AiHandler {
+    fn id(&self) -> Id {
+        self.0.id
+    }
+}
+
+impl CommandHandler for AiHandler {
     fn validate_cmd(&self, cmd_name: &str, args: &str) -> EventType {
         let action = match (cmd_name, args.is_empty()) {
             // Commandes sans arguments
@@ -44,42 +69,6 @@ impl AiHandler {
             action,
         })
     }
-}
-
-fn parse_resource(resource_name: &str) -> Option<Resource> {
-    match resource_name {
-        "food" => Some(Resource::Food),
-        "linemate" => Some(Resource::Linemate),
-        "deraumere" => Some(Resource::Deraumere),
-        "sibur" => Some(Resource::Sibur),
-        "mendiane" => Some(Resource::Mendiane),
-        "phiras" => Some(Resource::Phiras),
-        "thystame" => Some(Resource::Thystame),
-        _ => None,
-    }
-}
-
-fn split_command(full_cmd: &str) -> (&str, &str) {
-    match full_cmd.split_once(' ') {
-        Some((cmd_name, args)) => (cmd_name, args),
-        None => (full_cmd, ""),
-    }
-}
-
-impl HasId for AiHandler {
-    fn id(&self) -> Id {
-        self.0.id
-    }
-}
-
-impl CommandHandler for AiHandler {
-    fn parse_command(&mut self, full_cmd: String) -> EventType {
-        let split_cmd = split_command(&full_cmd);
-        let cmd_name = split_cmd.0;
-        let args = split_cmd.1;
-
-        self.validate_cmd(cmd_name, args)
-    }
 
     fn handle_command(&mut self, command: ServerResponse) -> CommandRes {
         match command {
@@ -105,7 +94,7 @@ impl CommandHandler for AiHandler {
                     CommandRes::Response(format!("{}\n", LookFormat(&look_result)))
                 }
             },
-            ServerResponse::GUI(_) | ServerResponse::Pending(_) => {
+            ServerResponse::Gui(_) | ServerResponse::Pending(_) => {
                 unreachable!()
             }
         }

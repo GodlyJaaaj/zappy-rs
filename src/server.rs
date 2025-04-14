@@ -1,13 +1,15 @@
 use crate::connection::Connection;
+use crate::constant::{RELATIVE_DIRECTIONS, SATIETY_LOSS_PER_TICK};
 use crate::event::Event;
 use crate::event::EventScheduler;
+use crate::gui::{Gui, GuiBuilder};
 use crate::map::Map;
 use crate::pending::PendingClient;
-use crate::player::{Direction, Player, PlayerState, RelativeDirection};
+use crate::player::{Direction, Player, PlayerState};
 use crate::protocol::PendingResponse::{LogAs, Shared};
 use crate::protocol::{
-    AIAction, AIResponse, ClientSender, EventType, GameEvent, HasId, Id, PendingAction,
-    ServerResponse, SharedAction, SharedResponse, TeamType,
+    AIAction, AIResponse, BctResponse, ClientSender, EventType, GUIAction, GUIResponse, GameEvent,
+    HasId, Id, PendingAction, ServerResponse, SharedAction, SharedResponse, TeamType,
 };
 use crate::resources::{Resource, Resources, LEVEL_REQUIREMENTS};
 use crate::sound::get_sound_direction;
@@ -71,6 +73,7 @@ pub struct Server {
     teams: HashMap<Id, Team>,
     pending_clients: HashMap<Id, PendingClient>,
     clients: HashMap<Id, Player>,
+    guis: HashMap<Id, Gui>,
     event_scheduler: EventScheduler<Event>,
 }
 
@@ -79,8 +82,6 @@ pub enum ServerError {
     #[error("socket error: {0}")]
     FailedToBind(#[from] std::io::Error),
 }
-
-const SATIETY_LOSS_PER_TICK: u64 = 1;
 
 impl Server {
     pub async fn from_config(config: ServerConfig) -> Result<Server, ServerError> {
@@ -94,8 +95,21 @@ impl Server {
 
         let mut teams: HashMap<Id, Team> = HashMap::new();
 
-        for (team_id, team) in config.teams.into_iter().enumerate() {
-            teams.insert(team_id as Id, Team::new(team_id as Id, team));
+        for (team_id, team_name) in config.teams.into_iter().enumerate() {
+            if team_name == "GRAPHIC" {
+                warn!("'GRAPHIC' can't be used as a team name and will be ignored");
+                continue;
+            }
+            teams.insert(
+                team_id as Id,
+                Team::new(
+                    team_id as Id,
+                    team_name
+                        .replace("\n", "_")
+                        .replace("\r", "_")
+                        .replace(" ", ""),
+                ),
+            );
         }
 
         let mut map = Map::new(Size::new(config.width as u64, config.height as u64));
@@ -112,6 +126,7 @@ impl Server {
             teams,
             pending_clients: HashMap::new(),
             clients: HashMap::new(),
+            guis: HashMap::new(),
             event_scheduler: EventScheduler::new(),
         })
     }
@@ -186,7 +201,7 @@ impl Server {
             client_id
         );
         let server_tx = self.global_channel.tx.clone();
-        let (client_tx, client_rx) = mpsc::channel::<ServerResponse>(32);
+        let (client_tx, client_rx) = mpsc::channel::<ServerResponse>(256);
         self.pending_clients.insert(
             client_id,
             PendingClient {
@@ -329,12 +344,6 @@ impl Server {
                         Direction::South => (0, -1),
                         Direction::West => (-1, 0),
                     };
-                    const RELATIVE_DIRECTIONS: [RelativeDirection; 4] = [
-                        RelativeDirection::Back,
-                        RelativeDirection::Left,
-                        RelativeDirection::Front,
-                        RelativeDirection::Right,
-                    ];
                     let nb_pushed_players = players_on_same_pos.len();
                     let new_pos = self
                         .map
@@ -535,8 +544,8 @@ impl Server {
             EventType::AI(GameEvent { id, action }) => {
                 self.handle_ai_events((id, action)).await;
             }
-            EventType::GUI(GameEvent { .. }) => {
-                unreachable!()
+            EventType::GUI(GameEvent { id, action }) => {
+                self.handle_gui_events((id, action)).await;
             }
             EventType::Pending(GameEvent { id, action }) => {
                 self.handle_pending_events((id, action)).await;
@@ -562,7 +571,9 @@ impl Server {
                 self.pending_clients.remove_entry(&id);
                 info!("Pending client: {} disconnected", id);
             }
-            PendingAction::Shared(SharedAction::InvalidAction) => unreachable!(),
+            PendingAction::Shared(
+                SharedAction::InvalidAction | SharedAction::InvalidParameters,
+            ) => unreachable!(),
             PendingAction::Shared(SharedAction::ReachedTakeLimit) => {
                 warn!("Pending client: {} sent too much data", id);
                 send_ko(client);
@@ -572,6 +583,18 @@ impl Server {
                 send_ko(client);
             }
             PendingAction::Login(team_name) => {
+                if team_name == "GRAPHIC" {
+                    let pending_client = self.pending_clients.remove(&id).unwrap();
+
+                    let new_gui = GuiBuilder::new()
+                        .pending_client(pending_client)
+                        .build()
+                        .unwrap();
+                    new_gui.send_to_client(ServerResponse::Pending(LogAs(TeamType::Graphic)));
+                    self.guis.insert(id, new_gui);
+                    return;
+                }
+
                 let Some(team) = self.teams.values().find(|team| team.name() == team_name) else {
                     send_ko(client);
                     return;
@@ -600,6 +623,17 @@ impl Server {
                     self.map.size(),
                 ))));
 
+                // gui
+                for (.., gui) in &self.guis {
+                    gui.send_to_client(ServerResponse::Gui(GUIResponse::Pnw(
+                        player.id(),
+                        player.position(),
+                        player.direction(),
+                        player.level(),
+                        team_name.clone(),
+                    )));
+                }
+
                 self.clients.insert(player.id(), player);
             }
         }
@@ -613,7 +647,8 @@ impl Server {
                 }
                 SharedAction::InvalidAction
                 | SharedAction::ReachedTakeLimit
-                | SharedAction::InvalidEncoding => {
+                | SharedAction::InvalidEncoding
+                | SharedAction::InvalidParameters => {
                     self.event_scheduler.schedule(Event::Ko, 0, id);
                 }
             },
@@ -644,6 +679,122 @@ impl Server {
                     unreachable!()
                 }
             },
+        }
+    }
+
+    async fn handle_gui_events(&mut self, (id, action): (Id, GUIAction)) {
+        match action {
+            GUIAction::Shared(shared) => match shared {
+                SharedAction::Disconnected => {
+                    self.guis.remove(&id);
+                }
+                SharedAction::InvalidAction
+                | SharedAction::ReachedTakeLimit
+                | SharedAction::InvalidEncoding => {
+                    if let Some(emitter) = self.guis.get_mut(&id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Shared(
+                            SharedResponse::Ko,
+                        )));
+                    }
+                }
+                SharedAction::InvalidParameters => {
+                    if let Some(emitter) = self.guis.get_mut(&id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                    }
+                }
+            },
+            GUIAction::Msz => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Msz(self.map.size())));
+                }
+            }
+            GUIAction::Bct(pos) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let Some(cell) = self.map.get(pos) else {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                        return;
+                    };
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Bct((
+                        pos,
+                        cell.ressources().clone(),
+                    ))));
+                }
+            }
+            GUIAction::Mct => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let bct_responses: Vec<BctResponse> = self
+                        .map
+                        .cells_with_positions()
+                        .map(|(pos, cell)| (pos, cell.ressources().clone()))
+                        .collect();
+
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Mct(bct_responses)));
+                }
+            }
+            GUIAction::Tna => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let team_name = self
+                        .teams
+                        .iter()
+                        .map(|(.., team_name)| team_name.name().to_string())
+                        .collect::<Vec<_>>();
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Tna(team_name)));
+                }
+            }
+            GUIAction::Ppo(player_id) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    if let Some(player) = self.clients.get(&player_id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                            player_id,
+                            player.position(),
+                            player.direction(),
+                        )));
+                    } else {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                    }
+                }
+            }
+            GUIAction::Plv(player_id) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    if let Some(player) = self.clients.get(&player_id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Plv(
+                            player_id,
+                            player.level(),
+                        )));
+                    } else {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                    }
+                }
+            }
+            GUIAction::Pin(player_id) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    if let Some(player) = self.clients.get(&player_id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Pin(
+                            player_id,
+                            player.position(),
+                            player.inventory(),
+                        )));
+                    } else {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                    }
+                }
+            }
+            GUIAction::Sgt => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let freq =
+                        (1_000_000_000f64 / self.tick_interval.period().as_nanos() as f64) as u64;
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sgt(freq)));
+                }
+            }
+            GUIAction::Sst(freq) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let tick_interval = time::interval(time::Duration::from_nanos(
+                        (1_000_000_000f64 / freq as f64) as u64,
+                    ));
+                    self.tick_interval = tick_interval;
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sst(freq)));
+                }
+            }
         }
     }
 }

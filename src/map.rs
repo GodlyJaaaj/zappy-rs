@@ -18,19 +18,40 @@ impl Index<UPosition> for Map {
     type Output = Cell;
 
     fn index(&self, pos: UPosition) -> &Self::Output {
-        &self.map[pos.y as usize][pos.x as usize]
+        &self.map[pos.y() as usize][pos.x() as usize]
     }
 }
 
 impl IndexMut<UPosition> for Map {
     fn index_mut(&mut self, pos: UPosition) -> &mut Self::Output {
-        &mut self.map[pos.y as usize][pos.x as usize]
+        &mut self.map[pos.y() as usize][pos.x() as usize]
     }
 }
 
 pub enum IncantationError {
     NotEnoughPlayers,
     NotEnoughRessources,
+}
+
+pub struct CellIter<'a> {
+    outer: std::slice::Iter<'a, Vec<Cell>>,
+    inner: Option<std::slice::Iter<'a, Cell>>,
+}
+
+impl<'a> Iterator for CellIter<'a> {
+    type Item = &'a Cell;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(inner_iter) = &mut self.inner {
+                if let Some(cell) = inner_iter.next() {
+                    return Some(cell);
+                }
+            }
+            self.inner = self.outer.next().map(|row| row.iter());
+            self.inner.as_ref()?;
+        }
+    }
 }
 
 impl Map {
@@ -43,16 +64,41 @@ impl Map {
         }
     }
 
+    pub fn cells(&self) -> CellIter {
+        CellIter {
+            outer: self.map.iter(),
+            inner: None,
+        }
+    }
+
+    pub fn cells_with_positions(&self) -> impl Iterator<Item = (UPosition, &Cell)> {
+        self.map.iter().enumerate().flat_map(|(y, row)| {
+            row.iter()
+                .enumerate()
+                .map(move |(x, cell)| (UPosition::new(x as u64, y as u64), cell))
+        })
+    }
+
+    pub fn get(&self, pos: UPosition) -> Option<&Cell> {
+        self.map.get(pos.y() as usize)?.get(pos.x() as usize)
+    }
+
+    pub fn get_mut(&mut self, pos: UPosition) -> Option<&mut Cell> {
+        self.map
+            .get_mut(pos.y() as usize)?
+            .get_mut(pos.x() as usize)
+    }
+
     pub fn get_pos(&self, pos: UPosition) -> UPosition {
-        let wrapped_x = pos.x % self.size.x();
-        let wrapped_y = pos.y % self.size.y();
+        let wrapped_x = pos.x() % self.size.x();
+        let wrapped_y = pos.y() % self.size.y();
 
         UPosition::new(wrapped_x, wrapped_y)
     }
 
     pub fn get_pos_with_offset(&self, pos: UPosition, offset: Position) -> UPosition {
-        let new_x = (pos.x as i64 + offset.x).rem_euclid(self.size.x() as i64) as u64;
-        let new_y = (pos.y as i64 + offset.y).rem_euclid(self.size.y() as i64) as u64;
+        let new_x = (pos.x() as i64 + offset.x()).rem_euclid(self.size.x() as i64) as u64;
+        let new_y = (pos.y() as i64 + offset.y()).rem_euclid(self.size.y() as i64) as u64;
 
         UPosition::new(new_x, new_y)
     }
@@ -62,13 +108,13 @@ impl Map {
             ((value % max as i64 + max as i64) % max as i64) as u64
         }
 
-        let wrapped_x = wrap(pos.x, self.size.x());
-        let wrapped_y = wrap(pos.y, self.size.y());
+        let wrapped_x = wrap(pos.x(), self.size.x());
+        let wrapped_y = wrap(pos.y(), self.size.y());
 
         UPosition::new(wrapped_x, wrapped_y)
     }
 
-    pub fn size(&self) -> Size {
+    pub fn size(&self) -> UPosition {
         self.size
     }
 

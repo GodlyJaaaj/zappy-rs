@@ -1,3 +1,4 @@
+use crate::constant::REFILL_PER_FOOD;
 use crate::pending::PendingClient;
 use crate::protocol::{ClientSender, HasId, Id, ServerResponse};
 use crate::resources::{ElevationLevel, Resource, Resources};
@@ -5,8 +6,7 @@ use crate::vec2::{HasPosition, Position, Size, UPosition};
 use rand::random;
 use tokio::sync::mpsc::Sender;
 
-const REFILL_PER_FOOD: u64 = 126;
-
+#[repr(u8)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Direction {
     North,
@@ -176,15 +176,17 @@ impl Player {
     }
 
     pub fn move_player(&mut self, dx: isize, dy: isize, map_size: &Size) -> &mut Self {
-        self.pos.x = (self.pos.x() as isize + dx).rem_euclid(map_size.x() as isize) as u64;
-        self.pos.y = (self.pos.y() as isize + dy).rem_euclid(map_size.y() as isize) as u64;
+        *self.position_mut().x_mut() =
+            (self.pos.x() as isize + dx).rem_euclid(map_size.x() as isize) as u64;
+        *self.position_mut().y_mut() =
+            (self.pos.y() as isize + dy).rem_euclid(map_size.y() as isize) as u64;
         self
     }
 
     pub fn get_visible_positions(&self) -> Vec<Position> {
         let mut visible_positions = Vec::new();
 
-        visible_positions.push(Position::new(self.pos.x as i64, self.pos.y as i64));
+        visible_positions.push(Position::new(self.pos.x() as i64, self.pos.y() as i64));
         for y in 1..=self.elevation as u8 + 1 {
             for x in -(y as i64)..=(y as i64) {
                 let rel_pos = match self.direction() {
@@ -194,8 +196,8 @@ impl Player {
                     Direction::West => Position::new(-(y as i64), x),
                 };
                 let abs_pos = Position::new(
-                    self.position().x as i64 + rel_pos.x,
-                    self.position().y as i64 + rel_pos.y,
+                    self.position().x() as i64 + rel_pos.x(),
+                    self.position().y() as i64 + rel_pos.y(),
                 );
 
                 visible_positions.push(abs_pos);

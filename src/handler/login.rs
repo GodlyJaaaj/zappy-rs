@@ -1,4 +1,5 @@
 use crate::handler::command::CommandRes::ChangeState;
+use crate::handler::command::State::GUI;
 use crate::handler::command::{CommandHandler, CommandRes, Handler, State};
 use crate::protocol::{
     EventType, HasId, Id, PendingAction, PendingEvent, PendingResponse, ServerResponse,
@@ -21,6 +22,10 @@ impl HasId for LoginHandler {
 }
 
 impl CommandHandler for LoginHandler {
+    fn validate_cmd(&self, _: &str, _: &str) -> EventType {
+        unreachable!()
+    }
+
     fn parse_command(&mut self, team_name: String) -> EventType {
         EventType::Pending(PendingEvent {
             id: self.id(),
@@ -36,12 +41,12 @@ impl CommandHandler for LoginHandler {
                     SharedResponse::Ok => CommandRes::Response("ok\n".to_string()),
                 },
                 PendingResponse::LogAs(team) => match team {
-                    TeamType::Graphic => {
-                        todo!();
-                    }
+                    TeamType::Graphic => ChangeState(GUI),
                     TeamType::IA(client_num, map_size) => ChangeState(State::IA(format!(
                         "{}\n{} {}\n",
-                        client_num, map_size.x, map_size.y
+                        client_num,
+                        map_size.x(),
+                        map_size.y()
                     ))),
                 },
             },
@@ -50,26 +55,6 @@ impl CommandHandler for LoginHandler {
                 CommandRes::Response("ko\n".to_owned())
             }
         }
-
-        //    match command.action {
-        //        Action::LoggedIn(client_type, nb_clients, map_size) => match client_type {
-        //            ClientType::GUI => {
-        //                println!("Logged in as GUI");
-        //                *state = State::Gui;
-        //                todo!("Implement GUI state");
-        //            }
-        //            ClientType::AI => {
-        //                println!("Logged in as AI");
-        //                *state = State::Ai;
-        //                format!("{}\n{} {}\n", nb_clients, map_size.x(), map_size.y())
-        //            }
-        //        },
-        //        Action::Ko => "ko\n".to_string(),
-        //        _ => {
-        //            println!("Unexpected action: {:?}", command.action);
-        //            "ko\n".to_string()
-        //        }
-        //    }
     }
 
     fn create_shared_event(&self, action: SharedAction) -> EventType {
