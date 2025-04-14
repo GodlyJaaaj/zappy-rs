@@ -110,7 +110,6 @@ impl Server {
                     team_name
                         .replace("\n", "_")
                         .replace("\r", "_")
-                        .replace(" ", ""),
                 ),
             );
         }
