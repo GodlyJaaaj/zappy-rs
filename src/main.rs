@@ -2,8 +2,10 @@
 
 mod cell;
 mod connection;
+mod constant;
 mod egg;
 mod event;
+mod formater;
 mod gui;
 mod handler;
 mod map;
@@ -15,8 +17,6 @@ mod server;
 mod sound;
 mod team;
 mod vec2;
-mod formater;
-mod constant;
 
 use crate::server::{Server, ServerConfig};
 use std::error::Error;
@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             "GRAPHIC".to_string(),
         ],
         4,
-        1,
+        100,
     );
     let mut server = Server::from_config(server_config).await?;
     server.run().await?;

@@ -1,7 +1,10 @@
-use crate::formater::{BctFormat, IdFormat, PinFormat};
+use crate::formater::{BctFormat, IdFormat, PinFormat, ResourceFormat};
 use crate::formater::{LevelFormat, UVecFormat};
 use crate::handler::command::{CommandHandler, CommandRes, Handler};
-use crate::protocol::{parse_prefixed_id, EventType, GUIAction, GUIEvent, GUIResponse, HasId, Id, ServerResponse, SharedAction, SharedResponse};
+use crate::protocol::{
+    parse_prefixed_id, EventType, GUIAction, GUIEvent, GUIResponse, HasId, Id, ServerResponse,
+    SharedAction, SharedResponse,
+};
 use crate::vec2::UPosition;
 
 pub struct GraphicHandler(Handler);
@@ -140,7 +143,7 @@ impl CommandHandler for GraphicHandler {
                     LevelFormat(&player_level)
                 )),
                 GUIResponse::Pin(player_id, player_pos, player_inv) => CommandRes::Response(
-                    format!("{}", PinFormat(&(player_id, player_pos, player_inv))),
+                    format!("{}\n", PinFormat(&(player_id, player_pos, player_inv))),
                 ),
                 GUIResponse::Sgt(freq) => CommandRes::Response(format!("sgt {}\n", freq)),
                 GUIResponse::Sst(freq) => CommandRes::Response(format!("sst {}\n", freq)),
@@ -154,7 +157,61 @@ impl CommandHandler for GraphicHandler {
                         team_name
                     ))
                 }
-                _ => todo!(),
+                GUIResponse::Pex(player_id) => {
+                    CommandRes::Response(format!("pex {}\n", IdFormat(&player_id)))
+                }
+                GUIResponse::Pbc(player_id, message) => {
+                    CommandRes::Response(format!("pbc {} {}\n", IdFormat(&player_id), message))
+                }
+                GUIResponse::Pic(pos, level, players) => {
+                    let players_formatted = players
+                        .iter()
+                        .map(|id| format!("{}", IdFormat(id)))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+
+                    CommandRes::Response(format!(
+                        "pic {} {} {}\n",
+                        UVecFormat(&pos),
+                        LevelFormat(&level),
+                        players_formatted
+                    ))
+                }
+                GUIResponse::Pie(incantation_pos, res) => CommandRes::Response(format!(
+                    "pie {} {}\n",
+                    UVecFormat(&incantation_pos),
+                    res as u8
+                )),
+                GUIResponse::Pfk(player_id) => {
+                    CommandRes::Response(format!("pfk {}\n", IdFormat(&player_id)))
+                }
+                GUIResponse::Pdr(player_id, resource) => CommandRes::Response(format!(
+                    "pdr {} {}\n",
+                    IdFormat(&player_id),
+                    ResourceFormat(&resource)
+                )),
+                GUIResponse::Pgt(player_id, resource) => CommandRes::Response(format!(
+                    "pgt {} {}\n",
+                    IdFormat(&player_id),
+                    ResourceFormat(&resource)
+                )),
+                GUIResponse::Pdi(player_id) => {
+                    CommandRes::Response(format!("pdi {}\n", IdFormat(&player_id)))
+                }
+                GUIResponse::Enw(egg_id, player_id, egg_pos) => CommandRes::Response(format!(
+                    "enw {} {} {}\n",
+                    IdFormat(&egg_id),
+                    IdFormat(&player_id),
+                    UVecFormat(&egg_pos)
+                )),
+                GUIResponse::Ebo(egg_id) => {
+                    CommandRes::Response(format!("ebo {}\n", IdFormat(&egg_id)))
+                }
+                GUIResponse::Edi(egg_id) => {
+                    CommandRes::Response(format!("edi {}\n", IdFormat(&egg_id)))
+                }
+                GUIResponse::Seg(team_name) => CommandRes::Response(format!("seg {}\n", team_name)),
+                GUIResponse::Smg(message) => CommandRes::Response(format!("smg {}\n", message)),
             },
             ServerResponse::AI(_) | ServerResponse::Pending(_) => {
                 unreachable!()

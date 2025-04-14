@@ -1,11 +1,14 @@
 use crate::cell::Cell;
 use crate::egg::Egg;
-use crate::protocol::{HasId, Id};
+use crate::gui::Gui;
+use crate::protocol::{ClientSender, GUIResponse, HasId, Id, ServerResponse};
 use crate::resources::{Resource, Resources};
 use crate::vec2::{HasPosition, Position, Size, UPosition};
 use rand::Rng;
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::{Index, IndexMut};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct Map {
     size: Size,
@@ -130,9 +133,12 @@ impl Map {
         self.eggs.iter().filter(|egg| egg.id() == team_id).count() as u64
     }
 
-    pub fn spawn_egg(&mut self, team_id: Id, pos: UPosition) {
-        let new_egg = Egg::new(team_id, pos);
+    pub fn spawn_egg(&mut self, team_id: Id, pos: UPosition) -> Id {
+        static EGG_ID: AtomicU64 = AtomicU64::new(0);
+        let egg_id: Id = EGG_ID.fetch_add(1, Ordering::Relaxed);
+        let new_egg = Egg::new(egg_id, team_id, pos);
         self.eggs.push(new_egg);
+        egg_id
     }
 
     pub fn spawn_eggs(&mut self, team_id: Id, amount: u64) {
@@ -149,11 +155,13 @@ impl Map {
             .eggs
             .iter()
             .enumerate()
-            .filter_map(
-                |(pos, egg)| {
-                    if egg.id() == team_id { Some(pos) } else { None }
-                },
-            )
+            .filter_map(|(pos, egg)| {
+                if egg.team_id() == team_id {
+                    Some(pos)
+                } else {
+                    None
+                }
+            })
             .collect();
 
         if egg_positions.is_empty() {
@@ -189,9 +197,23 @@ impl Map {
         removed_eggs
     }
 
-    pub fn add_resource(&mut self, resource: Resource, amount: u64, pos: UPosition) {
+    pub fn add_resource(
+        &mut self,
+        resource: Resource,
+        amount: u64,
+        pos: UPosition,
+        guis: &mut HashMap<Id, Gui>,
+    ) {
         self.resources[resource] += amount;
         self[pos].add_resource(resource, amount);
+
+        //gui
+        for (.., gui) in guis {
+            gui.send_to_client(ServerResponse::Gui(GUIResponse::Bct((
+                pos,
+                self[pos].ressources().clone(),
+            ))));
+        }
     }
 
     pub fn del_resource(
@@ -199,10 +221,18 @@ impl Map {
         resource: Resource,
         amount: u64,
         pos: UPosition,
+        guis: &mut HashMap<Id, Gui>,
     ) -> Option<Resource> {
         let res = self[pos].del_resource(resource, amount);
         if let Some(res) = res {
             self.resources[resource] -= amount;
+            //gui
+            for (.., gui) in guis {
+                gui.send_to_client(ServerResponse::Gui(GUIResponse::Bct((
+                    pos,
+                    self[pos].ressources().clone(),
+                ))));
+            }
             Some(res)
         } else {
             None

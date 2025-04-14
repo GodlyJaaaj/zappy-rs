@@ -1,8 +1,10 @@
 use crate::protocol::{BctResponse, Id, LookResult};
-use crate::resources::ElevationLevel::{Level0, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8};
+use crate::resources::ElevationLevel::{
+    Level0, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8,
+};
 use crate::resources::Resource::{Deraumere, Food, Linemate, Mendiane, Sibur};
 use crate::resources::Resource::{Phiras, Thystame};
-use crate::resources::{ElevationLevel, Resources};
+use crate::resources::{ElevationLevel, Resource, Resources};
 use crate::vec2::UPosition;
 use std::fmt;
 
@@ -18,7 +20,7 @@ pub struct UVecFormat<'a>(pub &'a UPosition);
 
 impl fmt::Display for UVecFormat<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", UVecFormat(self.0))
+        write!(f, "{} {}", self.0.x(), self.0.y())
     }
 }
 
@@ -141,6 +143,40 @@ impl fmt::Display for ResourcesFormat<'_> {
             self.0[Mendiane],
             self.0[Phiras],
             self.0[Thystame]
+        )
+    }
+}
+
+//only use for gui index
+pub struct ResourceFormat<'a>(pub &'a Resource);
+impl fmt::Display for ResourceFormat<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self.0 {
+                Deraumere => {
+                    2
+                }
+                Linemate => {
+                    1
+                }
+                Mendiane => {
+                    4
+                }
+                Phiras => {
+                    5
+                }
+                Sibur => {
+                    3
+                }
+                Thystame => {
+                    6
+                }
+                Food => {
+                    0
+                }
+            }
         )
     }
 }

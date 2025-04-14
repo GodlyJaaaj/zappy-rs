@@ -19,16 +19,7 @@ pub enum Resource {
 
 impl Resource {
     pub fn iter() -> impl Iterator<Item = Resource> {
-        [
-            Deraumere,
-            Linemate,
-            Mendiane,
-            Phiras,
-            Sibur,
-            Thystame,
-            Food,
-        ]
-        .into_iter()
+        [Deraumere, Linemate, Mendiane, Phiras, Sibur, Thystame, Food].into_iter()
     }
 }
 

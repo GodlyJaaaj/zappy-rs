@@ -1,5 +1,5 @@
 use crate::player::Direction;
-use crate::resources::{ElevationLevel, Resources};
+use crate::resources::{ElevationLevel, Resource, Resources};
 use crate::vec2::{Size, UPosition};
 use log::error;
 use std::str::FromStr;
@@ -82,21 +82,21 @@ pub enum GUIResponse {
     Ppo(Id, UPosition, Direction),
     Plv(Id, ElevationLevel),
     Pin(Id, UPosition, Resources),
-    Pex,
-    Pbc,
-    Pic,
-    Pie,
-    Pfk,
-    Pdr,
-    Pgt,
-    Pdi,
-    Enw,
-    Ebo,
-    Edi,
+    Pex(Id),
+    Pbc(Id, Arc<String>),
+    Pic(UPosition, ElevationLevel, Vec<Id>),
+    Pie(UPosition, bool),
+    Pfk(Id),
+    Pdr(Id, Resource),
+    Pgt(Id, Resource),
+    Pdi(Id),
+    Enw(Id, Id, UPosition),
+    Ebo(Id),
+    Edi(Id),
     Sgt(u64),
     Sst(u64),
-    Seg,
-    Smg,
+    Seg(String),
+    Smg(Arc<String>),
 }
 
 #[derive(Debug)]

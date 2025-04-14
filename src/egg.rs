@@ -3,19 +3,24 @@ use crate::vec2::{HasPosition, UPosition};
 
 #[derive(Clone, Debug)]
 pub struct Egg {
+    id: Id,
     team_id: Id,
     pos: UPosition,
 }
 
 impl Egg {
-    pub fn new(team_id: Id, pos: UPosition) -> Self {
-        Egg { team_id, pos }
+    pub fn new(id: Id, team_id: Id, pos: UPosition) -> Self {
+        Egg { id, team_id, pos }
+    }
+
+    pub fn team_id(&self) -> Id {
+        self.team_id
     }
 }
 
 impl HasId for Egg {
     fn id(&self) -> Id {
-        self.team_id
+        self.id
     }
 }
 
