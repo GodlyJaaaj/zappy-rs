@@ -955,6 +955,11 @@ impl Server {
                     ));
                     self.tick_interval = tick_interval;
                     emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sst(freq)));
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Sgt(
+                            freq
+                        )));
+                    }
                 }
             }
         }
