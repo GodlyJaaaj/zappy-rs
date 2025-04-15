@@ -2,7 +2,6 @@
 """
 Zappy GUI Client - Main Entry Point
 """
-import signal
 import sys
 
 from PyQt6.QtGui import QGuiApplication
@@ -21,13 +20,6 @@ def main():
     app.setStyle('Fusion')
 
     window = ZappyMainWindow()
-
-    # Détecte les écrans disponibles
-    screens = QGuiApplication.screens()
-    if len(screens) > 1:
-        second_screen = screens[1]
-        geometry = second_screen.geometry()
-        window.move(geometry.topLeft())
 
     window.show()
     

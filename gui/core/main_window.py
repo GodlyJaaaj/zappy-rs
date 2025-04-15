@@ -1,15 +1,16 @@
 """
 Main window for the Zappy GUI
 """
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QMessageBox, QInputDialog, QLineEdit, QSplitter, QTabWidget, QStatusBar
 )
 
-from gui.core.game_view import GameView
+from gui.core.map_view import MapView
 from gui.core.log_viewer import LogViewer
 from gui.core.map_controls import MapControls
+from gui.core.player.PlayerManager import PlayerManager
 from gui.core.server_connection import ServerConnection
 
 
@@ -21,16 +22,21 @@ class ZappyMainWindow(QMainWindow):
         
         # Set up the main window
         self.setWindowTitle("Zappy GUI")
-        self.resize(1200, 800)
+        self.resize(1500, 900)
         
         # Initialize components
         self.server_connection : ServerConnection | None = None  # Initialize as None instead of creating an instance
-        self.map_width = 0
-        self.map_height = 0
-        self.teams = []
+        self.player_manager = PlayerManager()
+
         self.map_controls = None
         self.log_viewer = None
         self.time_unit_label = None
+        self.connection_status = None
+        self.map_size_label = None
+        self.disconnect_button = None
+        self.connect_button = None
+        self.port_input = None
+        self.host_input = None
         
         # Create central layout with game view and tabs
         central_widget = QWidget()
@@ -46,30 +52,35 @@ class ZappyMainWindow(QMainWindow):
         ## Create a splitter to allow resizing between game view and tabs
         splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(splitter, 1)
-        #
+
         ## Game view on the left
-        self.game_view = GameView()
+        self.game_view = MapView(self.player_manager)
         splitter.addWidget(self.game_view)
-        #
+
         ## Create tab widget on the right
         self.tabs = QTabWidget()
         splitter.addWidget(self.tabs)
-        #
+
         ## Create all modules as tabs
         self.create_tabs()
-        #
+
         ## Set initial splitter sizes (70% game view, 30% tabs)
         splitter.setSizes([700, 300])
-        #
+
         ## Create status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Disconnected")
-        #
-        ## Timer for updates
-        #self.timer = QTimer(self)
-        #self.timer.timeout.connect(self.update_game_state)
-        #self.timer.start(100)  # Update every 100ms
+
+        # Create separate timers for game state updates and camera updates
+        self.game_update_timer = QTimer(self)
+        self.game_update_timer.timeout.connect(self.update_game_state)
+        self.game_update_timer.start(100)  # 100ms fixed interval for game state
+
+        # Camera update timer with higher frequency for smooth tracking
+        self.camera_update_timer = QTimer(self)
+        self.camera_update_timer.timeout.connect(self.update_camera)
+        self.camera_update_timer.start(16)  # ~60 FPS for smooth camera movement
         
         # No automatic connection dialog at startup
         
@@ -98,11 +109,13 @@ class ZappyMainWindow(QMainWindow):
         
         # Connect button
         self.connect_button = QPushButton("Connect")
+        # noinspection PyUnresolvedReferences
         self.connect_button.clicked.connect(self.connect_from_header)
         server_layout.addWidget(self.connect_button)
         
         # Disconnect button
         self.disconnect_button = QPushButton("Disconnect")
+        # noinspection PyUnresolvedReferences
         self.disconnect_button.clicked.connect(self.disconnect_from_server)
         self.disconnect_button.setEnabled(False)
         server_layout.addWidget(self.disconnect_button)
@@ -113,25 +126,8 @@ class ZappyMainWindow(QMainWindow):
         self.connection_status = QLabel("Status: Disconnected")
         self.connection_status.setStyleSheet("font-weight: bold; color: #d32f2f;")
         header_layout.addWidget(self.connection_status)
-        
-        # Game info section (map size, time unit)
-        game_info_section = QWidget()
-        game_info_layout = QHBoxLayout(game_info_section)
-        game_info_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Map size
-        game_info_layout.addWidget(QLabel("Map:"))
-        self.map_size_label = QLabel("0 x 0")
-        game_info_layout.addWidget(self.map_size_label)
-        
-        # Time unit
-        game_info_layout.addWidget(QLabel("Time Unit:"))
-        self.time_unit_label = QLabel("UNDEFINED")
-        game_info_layout.addWidget(self.time_unit_label)
-        
-        header_layout.addWidget(game_info_section)
+
         header_layout.addStretch(1)
-        
         # Add header to main layout
         main_layout.addWidget(header_widget)
     
@@ -153,6 +149,26 @@ class ZappyMainWindow(QMainWindow):
         
         # Map controls tab
         self.map_controls = MapControls()
+        self.map_controls.grid_changed.connect(self.on_show_grid_changed)
+        self.map_controls.coords_changed.connect(self.on_show_coords_changed)
+        self.map_controls.resources_changed.connect(self.on_show_resources_changed)
+        self.map_controls.text_size_changed.connect(self.on_text_size_changed)
+
+        self.map_controls.zoom_in_button.clicked.connect(self.game_view.zoom_in)
+        self.map_controls.zoom_out_button.clicked.connect(self.game_view.zoom_out)
+        self.map_controls.reset_zoom_button.clicked.connect(self.game_view.reset_view)
+
+        self.map_controls.follow_player_changed.connect(self.on_follow_player_changed)
+        self.map_controls.smooth_tracking_changed.connect(self.on_smooth_tracking_changed)
+        self.map_controls.tracking_speed_changed.connect(self.on_tracking_speed_changed)
+
+
+        self.player_manager.player_added.connect(self.update_player_list)
+        self.player_manager.player_removed.connect(self.update_player_list)
+
+        self.game_view.use_smooth_tracking = self.map_controls.smooth_tracking_checkbox.isChecked()
+        self.game_view.tracking_speed = self.map_controls.tracking_speed_slider.value() / 100.0
+
         self.tabs.addTab(self.map_controls, "Map Controls")
         
         # Resource viewer tab
@@ -170,6 +186,29 @@ class ZappyMainWindow(QMainWindow):
         # Log viewer tab
         self.log_viewer = LogViewer()
         self.tabs.addTab(self.log_viewer, "Logs")
+
+    def update_player_list(self, _=None):
+        """Update the player dropdown with the current player list"""
+        self.map_controls.update_player_list(self.player_manager.all_players())
+
+    def on_text_size_changed(self, size):
+        """Handle text size changes"""
+        self.game_view.set_text_size(size)
+
+    def on_show_grid_changed(self, show):
+        """Handle show grid changes"""
+        self.game_view.show_grid = show
+        self.game_view.draw_map()
+
+    def on_show_coords_changed(self, show):
+        """Handle show coordinates changes"""
+        self.game_view.show_coordinates = show
+        self.game_view.draw_map()
+
+    def on_show_resources_changed(self, show):
+        """Handle show resources changes"""
+        self.game_view.show_resources = show
+        self.game_view.draw_map()
     
     def show_connect_dialog(self):
         """Show dialog to connect to the server"""
@@ -209,7 +248,6 @@ class ZappyMainWindow(QMainWindow):
             self.connection_status.setStyleSheet("font-weight: bold; color: #d32f2f;")
             self.disconnect_button.setEnabled(False)
             self.connect_button.setEnabled(True)
-            self.game_view.clear()
 
     
     def connect_to_server(self, host, port):
@@ -222,6 +260,8 @@ class ZappyMainWindow(QMainWindow):
 
             #connect emitter to server_connection
             self.map_controls.time_unit_changed.connect(self.server_connection.send_new_time_unit)
+
+            self.map_controls.set_enabled(True)
             
             # Update host/port input fields
             self.host_input.setText(host)
@@ -246,23 +286,31 @@ class ZappyMainWindow(QMainWindow):
             self.connection_status.setStyleSheet("font-weight: bold; color: #d32f2f;")
             self.disconnect_button.setEnabled(False)
             self.connect_button.setEnabled(True)
+
+            self.map_controls.set_enabled(False)
+
+            # Clear the game view
+            self.game_view.scene.clear()
+            self.game_view.tiles = {}  # Reset tiles data
             
             # Log disconnection
             self.log_viewer.add_log("Disconnected from server", "connection")
-    
+
     def update_game_state(self):
         """Update game state with new data from server"""
         if not self.server_connection or not self.server_connection.connected:
             return
-        
+
         # Get responses from server
         responses = self.server_connection.get_responses()
-        
+
         # Process responses
         for response in responses:
             self.process_server_response(response)
 
+        # Draw the map
         self.game_view.draw_map()
+
     
     def process_server_response(self, response):
         """Process a response from the server"""
@@ -277,48 +325,37 @@ class ZappyMainWindow(QMainWindow):
         
         try:
             # Map size
+            #msz X Y\n
             if cmd == "msz" and len(parts) >= 3:
-                self.map_width = int(parts[1])
-                self.map_height = int(parts[2])
-                
-                # Update game view with map size
-                if self.game_view:
-                    self.game_view.set_map_size(self.map_width, self.map_height)
-                
-                # Update map controls with map size
-                if self.map_controls:
-                    self.map_controls.set_map_size(self.map_width, self.map_height)
-                
-                # Update resource viewer with map size
-                if self.resource_viewer:
-                    self.resource_viewer.update_map_size(self.map_width, self.map_height)
-                
-                # Update map size in header
-                self.update_map_size_in_header()
+                map_width = int(parts[1])
+                map_height = int(parts[2])
+                self.game_view.set_map_size(map_width, map_height)
 
-            if cmd == "sgt" and len(parts) >= 2:
+
+            # In ZappyMainWindow.process_server_response
+            elif cmd == "sgt" and len(parts) >= 2:
                 freq = int(parts[1])
                 self.map_controls.set_time_unit(freq)
-                self.update_time_unit_in_header(freq)
+                # You might also want to log this
+                self.log_viewer.add_log(f"Server time unit set to {freq}", "game")
+
+            elif cmd == "sst" and len(parts) >= 2:
+                freq = int(parts[1])
+                self.map_controls.set_time_unit(freq)
+                self.log_viewer.add_log(f"Server time unit changed to {freq}", "game")
             
             # Team name
             elif cmd == "tna" and len(parts) >= 2:
-                team_name = parts[1]
-                if team_name not in self.teams:
-                    self.teams.append(team_name)
-                    # Update team panel
-                    if self.team_panel:
-                        self.team_panel.add_team(team_name)
+                pass
             
             # Tile content
             elif cmd == "bct" and len(parts) >= 10:
                 x = int(parts[1])
                 y = int(parts[2])
                 resources = [int(parts[i]) for i in range(3, 10)]
-                
-                # Update game view with tile resources
-                if self.game_view:
-                    self.game_view.update_tile(x, y, resources)
+
+                # Update resources in the game view
+                self.game_view.update_tile_resources(x, y, resources)
             
             # New player
             elif cmd == "pnw" and len(parts) >= 7:
@@ -328,65 +365,57 @@ class ZappyMainWindow(QMainWindow):
                 orientation = int(parts[4])
                 level = int(parts[5])
                 team_name = parts[6]
-                
-                # Update game view with player
-                if self.game_view:
-                    self.game_view.add_player(player_id, x, y, orientation, level, team_name)
-                
-                # Update player panel
-                if self.player_panel:
-                    self.player_panel.add_player(player_id, x, y, orientation, level, team_name)
-                
-                # Update team panel
-                if self.team_panel:
-                    self.team_panel.add_player_to_team(team_name, player_id)
-                
-                # Add player to map controls follow list
-                if self.map_controls:
-                    self.map_controls.add_player_to_follow(player_id, team_name)
-                
+
+                # Convert numeric orientation to direction letter
+                direction_map = {1: "N", 2: "E", 3: "S", 4: "W"}
+                direction = direction_map.get(orientation, "N")
+
+                # Create the player in the player manager
+                self.player_manager.add_player(
+                    player_id,
+                    position=(x, y),
+                    direction=direction,
+                    level=level,
+                    team=team_name
+                )
+
                 self.log_viewer.add_player_log(f"Player #{player_id} (team {team_name}) joined at level {level}")
-            
+
             # Player position
             elif cmd == "ppo" and len(parts) >= 5:
                 player_id = int(parts[1][1:])  # Remove the # prefix
                 x = int(parts[2])
                 y = int(parts[3])
                 orientation = int(parts[4])
-                
-                # Update game view with player position
-                if self.game_view:
-                    self.game_view.update_player_position(player_id, x, y, orientation)
-                
-                # Update player panel
-                if self.player_panel:
-                    self.player_panel.update_player_position(player_id, x, y, orientation)
+
+                # Convert numeric orientation to direction letter
+                direction_map = {1: "N", 2: "E", 3: "S", 4: "W"}
+                direction = direction_map.get(orientation, "N")
+
+                # Update player position
+                self.player_manager.update_player_position(player_id, (x, y), direction)
+
+            # Player death
+            elif cmd == "pdi" and len(parts) >= 2:
+                player_id = int(parts[1][1:])
+
+                # Remove player
+                self.player_manager.remove_player(player_id)
+                self.log_viewer.add_player_log(f"Player #{player_id} died")
             
             # Player level
             elif cmd == "plv" and len(parts) >= 3:
                 player_id = int(parts[1][1:])  # Remove the # prefix
                 level = int(parts[2])
                 
-                # Update game view with player level
-                if self.game_view:
-                    self.game_view.update_player_level(player_id, level)
-                
-                # Update player panel
-                if self.player_panel:
-                    self.player_panel.update_player_level(player_id, level)
-                
-                # Update team panel
-                if self.team_panel:
-                    self.team_panel.update_player_level(player_id, level)
-                
                 self.log_viewer.add_player_log(f"Player #{player_id} is now level {level}")
             
             # Player inventory
             elif cmd == "pin" and len(parts) >= 10:
-                player_id = int(parts[1][1:])  # Remove the # prefix
-                x = int(parts[2])
-                y = int(parts[3])
-                resources = {
+                _player_id = int(parts[1][1:])  # Remove the # prefix
+                _x = int(parts[2])
+                _y = int(parts[3])
+                _resources = {
                     "food": int(parts[4]),
                     "linemate": int(parts[5]),
                     "deraumere": int(parts[6]),
@@ -395,32 +424,6 @@ class ZappyMainWindow(QMainWindow):
                     "phiras": int(parts[9]),
                     "thystame": int(parts[10])
                 }
-                
-                if self.player_panel:
-                    self.player_panel.update_player_inventory(player_id, resources)
-            
-            # Player death
-            elif cmd == "pdi" and len(parts) >= 2:
-                player_id = int(parts[1][1:])
-                self.team_panel.remove_player_by_id(player_id)
-
-                # Update game view to remove player
-                if self.game_view:
-                    self.game_view.remove_player(player_id)
-                
-                # Update player panel
-                if self.player_panel:
-                    self.player_panel.remove_player(player_id)
-                
-                # Update team panel
-                if self.team_panel:
-                    self.team_panel.remove_player_from_team(player_id)
-                
-                # Remove player from follow list in map controls
-                if self.map_controls:
-                    self.map_controls.remove_player_from_follow(player_id)
-                
-                self.log_viewer.add_player_log(f"Player #{player_id} died")
             
             # Start of incantation
             elif cmd == "pic" and len(parts) >= 4:
@@ -428,10 +431,6 @@ class ZappyMainWindow(QMainWindow):
                 y = int(parts[2])
                 level = int(parts[3])
                 players = [int(parts[i][1:]) for i in range(4, len(parts))]
-                
-                # Update game view with incantation
-                if self.game_view:
-                    self.game_view.start_incantation(x, y, level, players)
                 
                 player_str = ", ".join([f"#{p}" for p in players])
                 self.log_viewer.add_incantation_log(
@@ -443,11 +442,7 @@ class ZappyMainWindow(QMainWindow):
                 x = int(parts[1])
                 y = int(parts[2])
                 result = int(parts[3])  # 0 = failure, 1 = success
-                
-                # Update game view with end of incantation
-                if self.game_view:
-                    self.game_view.end_incantation(x, y, result)
-                
+
                 status = "succeeded" if result == 1 else "failed"
                 self.log_viewer.add_incantation_log(
                     f"Incantation at ({x}, {y}) {status}"
@@ -456,19 +451,28 @@ class ZappyMainWindow(QMainWindow):
         except Exception as e:
             print(f"Error processing response: {e} - Response: {response}")
     
-    def update_map_size_in_header(self):
-        """Update the map size display in the header"""
-        if hasattr(self, 'map_size_label'):
-            self.map_size_label.setText(f"{self.map_width} x {self.map_height}")
-    
     def update_time_unit_in_header(self, time_unit):
         """Update the time unit display in the header"""
         self.time_unit_label.setText(f"{time_unit} ms")
 
-    def show_about_dialog(self):
-        """Show about dialog with information about the application"""
-        QMessageBox.about(
-            self, "About Zappy GUI",
-            "Zappy GUI Client\n\n"
-            "A graphical client for visualizing the Zappy game server."
-        )
+    def on_follow_player_changed(self, player_id):
+        """Handle follow player changes"""
+        self.game_view.tracked_player_id = player_id
+        if player_id is not None:
+            self.game_view.center_on_player(player_id)
+
+    def on_smooth_tracking_changed(self, enabled):
+        """Handle smooth tracking setting changes"""
+        # You'll need to implement smooth tracking in your MapView
+        self.game_view.use_smooth_tracking = enabled
+
+    def on_tracking_speed_changed(self, speed):
+        """Handle tracking speed changes"""
+        # Set the tracking speed in your MapView
+        self.game_view.tracking_speed = speed
+
+    def update_camera(self):
+        """Update camera position if tracking a player (called at higher frequency)"""
+        # Only update camera tracking, not the entire game state
+        if hasattr(self.game_view, 'tracked_player_id') and self.game_view.tracked_player_id is not None:
+            self.game_view.update_player_tracking()
