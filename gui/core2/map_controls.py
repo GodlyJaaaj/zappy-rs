@@ -15,18 +15,7 @@ class MapControls(QWidget):
     
     def __init__(self):
         super().__init__()
-
-        self.follow_player_combo = None
-        self.show_resources_checkbox = None
-        self.show_coords_checkbox = None
-        self.show_grid_checkbox = None
-        self.zoom_out_button = None
-        self.map_size_label = None
-        self.zoom_in_button = None
-        self.apply_time_button = None
-        self.time_input = None
-        self.time_slider = None
-        self.time_unit_label = None
+        
         self.time_unit = 100  # Default time unit (frequency)
         self.map_width = 10   # Default map width
         self.map_height = 10  # Default map height
@@ -55,13 +44,13 @@ class MapControls(QWidget):
         self.time_slider.valueChanged.connect(self.on_time_slider_changed)
         
         # Spin box for time unit
-        self.time_input = QSpinBox()
-        self.time_input.setRange(1, 1000)
-        self.time_input.setValue(self.time_unit)
-        self.time_input.valueChanged.connect(self.on_time_spin_changed)
+        self.time_spin = QSpinBox()
+        self.time_spin.setRange(1, 1000)
+        self.time_spin.setValue(self.time_unit)
+        self.time_spin.valueChanged.connect(self.on_time_spin_changed)
         
         time_slider_layout.addWidget(self.time_slider)
-        time_slider_layout.addWidget(self.time_input)
+        time_slider_layout.addWidget(self.time_spin)
         
         time_layout.addLayout(time_slider_layout)
         
@@ -141,15 +130,15 @@ class MapControls(QWidget):
         """Update the time unit display"""
         self.time_unit = time_unit
         self.time_slider.setValue(time_unit)
-        self.time_input.setValue(time_unit)
+        self.time_spin.setValue(time_unit)
     
     def on_time_slider_changed(self, value):
         """Handle time slider value changes"""
         self.time_unit = value
         self.time_unit_label.setText(f"Time unit: {value}")
-        self.time_input.blockSignals(True)
-        self.time_input.setValue(value)
-        self.time_input.blockSignals(False)
+        self.time_spin.blockSignals(True)
+        self.time_spin.setValue(value)
+        self.time_spin.blockSignals(False)
     
     def on_time_spin_changed(self, value):
         """Handle time spin box value changes"""

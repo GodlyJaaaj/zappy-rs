@@ -1,16 +1,22 @@
 """
 Main window for the Zappy GUI
 """
-from PyQt6.QtCore import Qt
+import sys
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QMessageBox, QInputDialog, QLineEdit, QSplitter, QTabWidget, QStatusBar
+    QDockWidget, QSplitter, QMessageBox, QInputDialog, QLineEdit, QStatusBar,
+    QTabWidget
 )
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QIcon, QFont, QAction
 
-from gui.core.game_view import GameView
-from gui.core.log_viewer import LogViewer
-from gui.core.map_controls import MapControls
-from gui.core.server_connection import ServerConnection
+from .server_connection import ServerConnection
+from .game_view import GameView
+from .map_controls import MapControls
+from .resource_viewer import ResourceViewer
+from .log_viewer import LogViewer
+from .team_panel import TeamPanel
+from .player_panel import PlayerPanel
 
 
 class ZappyMainWindow(QMainWindow):
@@ -28,9 +34,8 @@ class ZappyMainWindow(QMainWindow):
         self.map_width = 0
         self.map_height = 0
         self.teams = []
-        self.map_controls = None
-        self.log_viewer = None
-        self.time_unit_label = None
+        self.game_over = False
+        self.winning_team = None
         
         # Create central layout with game view and tabs
         central_widget = QWidget()
@@ -42,34 +47,45 @@ class ZappyMainWindow(QMainWindow):
         
         # Add connection header
         self.create_connection_header(main_layout)
-
-        ## Create a splitter to allow resizing between game view and tabs
+        
+        # Add win condition banner (hidden by default)
+        self.win_banner = QLabel()
+        self.win_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.win_banner.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.win_banner.setStyleSheet("background-color: #4CAF50; color: white; padding: 10px;")
+        self.win_banner.hide()
+        main_layout.addWidget(self.win_banner)
+        
+        # Create a splitter to allow resizing between game view and tabs
         splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(splitter, 1)
-        #
-        ## Game view on the left
+        
+        # Game view on the left
         self.game_view = GameView()
         splitter.addWidget(self.game_view)
-        #
-        ## Create tab widget on the right
+        
+        # Create tab widget on the right
         self.tabs = QTabWidget()
         splitter.addWidget(self.tabs)
-        #
-        ## Create all modules as tabs
+        
+        # Create all modules as tabs
         self.create_tabs()
-        #
-        ## Set initial splitter sizes (70% game view, 30% tabs)
+        
+        # Set initial splitter sizes (70% game view, 30% tabs)
         splitter.setSizes([700, 300])
-        #
-        ## Create status bar
+        
+        # Create status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Disconnected")
-        #
-        ## Timer for updates
-        #self.timer = QTimer(self)
-        #self.timer.timeout.connect(self.update_game_state)
-        #self.timer.start(100)  # Update every 100ms
+        
+        # Create menu bar
+        self.create_menu_bar()
+        
+        # Timer for updates
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_game_state)
+        self.timer.start(100)  # Update every 100ms
         
         # No automatic connection dialog at startup
         
@@ -156,20 +172,64 @@ class ZappyMainWindow(QMainWindow):
         self.tabs.addTab(self.map_controls, "Map Controls")
         
         # Resource viewer tab
-        #self.resource_viewer = ResourceViewer()
-        #self.tabs.addTab(self.resource_viewer, "Resources")
+        self.resource_viewer = ResourceViewer()
+        self.tabs.addTab(self.resource_viewer, "Resources")
         
         # Team panel tab
-        #self.team_panel = TeamPanel()
-        #self.tabs.addTab(self.team_panel, "Teams")
+        self.team_panel = TeamPanel()
+        self.tabs.addTab(self.team_panel, "Teams")
         
         # Player panel tab
-        #self.player_panel = PlayerPanel()
-        #self.tabs.addTab(self.player_panel, "Players")
+        self.player_panel = PlayerPanel()
+        self.tabs.addTab(self.player_panel, "Players")
         
         # Log viewer tab
         self.log_viewer = LogViewer()
         self.tabs.addTab(self.log_viewer, "Logs")
+    
+    def create_menu_bar(self):
+        """Create the main window menu bar"""
+        menu_bar = self.menuBar()
+        
+        # File menu
+        file_menu = menu_bar.addMenu("&File")
+        
+        connect_action = QAction("&Connect to Server", self)
+        connect_action.triggered.connect(self.show_connect_dialog)
+        file_menu.addAction(connect_action)
+        
+        # Disconnect action
+        disconnect_action = QAction("&Disconnect", self)
+        disconnect_action.triggered.connect(self.disconnect_from_server)
+        disconnect_action.setEnabled(False)  # Disabled until connected
+        self.disconnect_action = disconnect_action
+        file_menu.addAction(disconnect_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction("&Exit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # View menu
+        view_menu = menu_bar.addMenu("&View")
+        
+        # Reset camera action
+        reset_camera_action = QAction("Reset Camera", self)
+        reset_camera_action.triggered.connect(self.reset_camera)
+        view_menu.addAction(reset_camera_action)
+        
+        # Help menu
+        help_menu = menu_bar.addMenu("&Help")
+        
+        about_action = QAction("&About", self)
+        about_action.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about_action)
+    
+    def reset_camera(self):
+        """Reset game view camera to default position"""
+        if self.game_view:
+            self.game_view.reset_camera()
     
     def show_connect_dialog(self):
         """Show dialog to connect to the server"""
@@ -210,6 +270,7 @@ class ZappyMainWindow(QMainWindow):
             self.disconnect_button.setEnabled(False)
             self.connect_button.setEnabled(True)
             self.game_view.clear()
+            self.game_view.scene.clear()
 
     
     def connect_to_server(self, host, port):
@@ -244,6 +305,7 @@ class ZappyMainWindow(QMainWindow):
             self.status_bar.showMessage("Disconnected")
             self.connection_status.setText("Status: Disconnected")
             self.connection_status.setStyleSheet("font-weight: bold; color: #d32f2f;")
+            self.disconnect_action.setEnabled(False)
             self.disconnect_button.setEnabled(False)
             self.connect_button.setEnabled(True)
             
@@ -262,7 +324,7 @@ class ZappyMainWindow(QMainWindow):
         for response in responses:
             self.process_server_response(response)
 
-        self.game_view.draw_map()
+        self.game_view.redraw_map()
     
     def process_server_response(self, response):
         """Process a response from the server"""

@@ -1,11 +1,11 @@
 """
 Team panel component for the Zappy GUI client
 """
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QListWidget, QListWidgetItem, QTableWidget, 
-                            QTableWidgetItem, QHeaderView, QGroupBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QBrush
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel,
+                             QListWidget, QTableWidget,
+                             QTableWidgetItem, QHeaderView, QGroupBox)
 
 
 class TeamPanel(QWidget):
@@ -88,6 +88,16 @@ class TeamPanel(QWidget):
         # Update the display if this team is selected
         if self.get_selected_team() == team_name:
             self.update_team_display(team_name)
+
+    def remove_player_by_id(self, player_id):
+        """Remove a player from all teams by their ID"""
+        for team_name, team_data in self.teams.items():
+            if player_id in team_data['players']:
+                del team_data['players'][player_id]
+                # Si l'équipe est affichée, met à jour l'affichage
+                if self.get_selected_team() == team_name:
+                    self.update_team_display(team_name)
+                break  # Le joueur est unique, on peut s'arrêter ici
     
     def update_player_level(self, team_name, player_id, level):
         """Update a player's level in a team"""

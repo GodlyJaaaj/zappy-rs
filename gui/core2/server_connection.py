@@ -9,7 +9,7 @@ import logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger()
+logger = logging.getLogger("ZappyConnection")
 
 
 class ServerConnection:
@@ -21,7 +21,7 @@ class ServerConnection:
         self.port = port
         self.socket = None
         self.connected = False
-        self.on_status_change = None  # Callback
+        self.on_status_change = None  # Callback optionnel
         self.response_queue = queue.Queue()
         self.receive_thread = None
         self.running = False
