@@ -290,8 +290,7 @@ class ZappyMainWindow(QMainWindow):
             self.map_controls.set_enabled(False)
 
             # Clear the game view
-            self.game_view.scene.clear()
-            self.game_view.tiles = {}  # Reset tiles data
+            self.game_view.clear()
             
             # Log disconnection
             self.log_viewer.add_log("Disconnected from server", "connection")

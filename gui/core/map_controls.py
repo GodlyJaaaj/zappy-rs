@@ -251,7 +251,6 @@ class MapControls(QWidget):
         """Apply the selected time unit"""
         self.time_unit_changed.emit(self.time_unit)
 
-    # Add these new methods
     def on_show_grid_changed(self, state):
         """Handle show grid checkbox state changes"""
         self.grid_changed.emit(state == Qt.CheckState.Checked.value)

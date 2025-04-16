@@ -14,7 +14,23 @@ from gui.core.player.PlayerManager import PlayerManager
 class MapView(QWidget):
     """Game view widget for rendering the Zappy game map"""
 
+    def clear(self):
+        """Clear the map view"""
+        self.scene.clear()
+        self.grid_items = []
+        self.coord_texts = {}
+        self.resource_items = {}
+        self.player_items = {}
+        self.tiles = {}
+        self.player_manager.clear()
+
     def __init__(self, player_manager: PlayerManager):
+        self.grid_items = []
+        self.coord_texts = {}
+        self.resource_items = {}
+        self.player_items = {}
+        self.tiles = {}
+
         super().__init__()
 
         self.player_manager = player_manager
@@ -34,8 +50,6 @@ class MapView(QWidget):
 
         self.use_smooth_tracking = True  # Set to True by default
         self.tracking_speed = 0.1  # Default tracking speed
-
-        self.tiles = {}
         
         # Colors for teams
         self.team_colors = {}
@@ -145,61 +159,91 @@ class MapView(QWidget):
             for x in range(width):
                 for y in range(height):
                     self.tiles[(x, y)] = {res: 0 for res in self.resource_order}
-    
-    def draw_map(self):
-        """Clear and redraw the entire map"""
-        self.scene.clear()
 
-        # Calculate map dimensions
+    def draw_map(self):
+        """Dessiner la carte initiale avec les éléments persistants"""
+        self.scene.clear()
+        self.grid_items = []
+        self.coord_texts = {}
+        self.resource_items = {}
+        self.player_items = {}
+
+        # Calculer les dimensions
         map_width_px = self.map_width * self.cell_size
         map_height_px = self.map_height * self.cell_size
-        
-        # Draw grid
+
+        # Dessiner la grille (éléments persistants)
         if self.show_grid:
             grid_pen = QPen(QColor(255, 255, 255), 2.0)
             for i in range(self.map_width + 1):
                 x = i * self.cell_size
-                self.scene.addLine(x, 0, x, map_height_px, grid_pen)
+                line = self.scene.addLine(x, 0, x, map_height_px, grid_pen)
+                self.grid_items.append(line)
 
             for i in range(self.map_height + 1):
                 y = i * self.cell_size
-                self.scene.addLine(0, y, map_width_px, y, grid_pen)
+                line = self.scene.addLine(0, y, map_width_px, y, grid_pen)
+                self.grid_items.append(line)
 
-        # Draw tile contents
+        # Dessiner les tuiles initiales
         for pos, resources in self.tiles.items():
             x, y = pos
-            self.draw_tile(x, y)
-        
-        # Set scene rect and adjust view
+            self.draw_tile_resources(x, y, resources)
+            self.draw_coordinate_text(x, y)
+
+        # Dessiner tous les joueurs
+        for player_id, player_data in self.player_manager.all_players().items():
+            self.draw_player(player_id, player_data)
+
+        # Configurer la scène
         self.scene.setSceneRect(0, 0, map_width_px, map_height_px)
 
         if not hasattr(self, 'view_initialized') or not self.view_initialized:
             self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
             self.view_initialized = True
 
-    def draw_tile(self, x, y):
-        """Draw a tile with resources"""
-        # Convert to pixel coordinates
+    def draw_coordinate_text(self, x, y):
+        """Dessine le texte des coordonnées d'une tuile"""
+        if not self.show_coordinates:
+            return
+
+        # Convertir en coordonnées de pixels
         px = x * self.cell_size
-        py = (self.map_height - y - 1) * self.cell_size  # Flip Y for visual consistency
+        py = (self.map_height - y - 1) * self.cell_size
 
-        # Draw players
-        for player_id, player_data in self.player_manager.all_players().items():
-            self.draw_player(player_id, player_data)
+        # Créer le texte des coordonnées
+        coord_text = self.scene.addText(f"{x},{y}")
+        coord_text.setDefaultTextColor(QColor(180, 180, 180))
+        coord_text.setFont(QFont("monospace", self.text_size))
 
-        # Coordinates text - centered in the tile
-        if self.show_coordinates:
-            coord_text = self.scene.addText(f"{x},{y}")
-            coord_text.setDefaultTextColor(QColor(180, 180, 180))
-            coord_text.setFont(QFont("monospace", self.text_size))
+        # Calculer la position centrale du texte
+        text_width = coord_text.boundingRect().width()
+        text_height = coord_text.boundingRect().height()
+        text_x = px + (self.cell_size - text_width) / 2
+        text_y = py + (self.cell_size - text_height) / 2
 
-            # Calculate the center position for the text
-            text_width = coord_text.boundingRect().width()
-            text_height = coord_text.boundingRect().height()
-            text_x = px + (self.cell_size - text_width) / 2
-            text_y = py + (self.cell_size - text_height) / 2
+        coord_text.setPos(text_x, text_y)
 
-            coord_text.setPos(text_x, text_y)
+        # Stocker la référence
+        self.coord_texts[(x, y)] = coord_text
+
+    def draw_tile_resources(self, x, y, resources):
+        """Dessine les ressources sur une tuile"""
+        if not self.show_resources:
+            return
+
+    def draw_tile(self, x, y):
+        """Met à jour une tuile avec ressources"""
+        # Plus besoin de redessiner les coordonnées, car elles sont persistantes
+        # Mettre à jour les ressources si nécessaire
+        resources = self.tiles.get((x, y), {})
+
+        # Si les ressources existent déjà visuellement, les mettre à jour
+        # sinon les créer
+        if (x, y) in self.resource_items:
+            self.update_tile_resources_visual(x, y, resources)
+        else:
+            self.draw_tile_resources(x, y, resources)
 
     def update_tile_resources(self, x, y, resources):
         """Update resources on a specific tile
@@ -225,28 +269,36 @@ class MapView(QWidget):
                     self.tiles[(x, y)][res_name] = resources[i]
 
     def draw_player(self, player_id, player_data):
-        """Draw a player on the map"""
-        # Extract player data
+        """Dessine ou met à jour un joueur sur la carte"""
+        # Supprimer les anciens éléments graphiques si le joueur existe déjà
+        if player_id in self.player_items:
+            for item in self.player_items[player_id]:
+                self.scene.removeItem(item)
+
+        # Créer une liste pour stocker les nouveaux éléments graphiques
+        player_graphics = []
+
+        # Extraire les données du joueur
         position = player_data.get('position', (0, 0))
         x, y = position
         direction = player_data.get('direction', 'N')
         level = player_data.get('level', 1)
         team = player_data.get('team', 'default')
 
-        # Convert direction string to numeric orientation
+        # Convertir la direction en orientation numérique
         orientation_map = {"N": 1, "E": 2, "S": 3, "W": 4}
-        orientation = orientation_map.get(direction, 1)  # Default to North if unknown
+        orientation = orientation_map.get(direction, 1)
 
-        # Convert to pixel coordinates
-        px = (x + 0.5) * self.cell_size  # Center of cell
-        py = (self.map_height - y - 0.5) * self.cell_size  # Flip Y, center of cell
+        # Convertir en coordonnées de pixels
+        px = (x + 0.5) * self.cell_size
+        py = (self.map_height - y - 0.5) * self.cell_size
 
         player_size = self.cell_size * 0.6
 
-        # Base player shape (circle)
+        # Forme de base du joueur (cercle)
         player_rect = QRectF(px - player_size / 2, py - player_size / 2, player_size, player_size)
 
-        # Create a radial gradient for the player
+        # Créer un dégradé radial pour le joueur
         team_color = self.get_team_color(team)
         gradient = QRadialGradient(px, py, player_size / 2)
         gradient.setColorAt(0, team_color.lighter(150))
@@ -255,16 +307,15 @@ class MapView(QWidget):
         player_circle = self.scene.addEllipse(player_rect,
                                               QPen(Qt.GlobalColor.black, 1),
                                               QBrush(gradient))
-        player_circle.setZValue(10)  # Draw players above other elements
+        player_circle.setZValue(10)
+        player_graphics.append(player_circle)
 
-        # Direction indicator (triangle)
+        # Indicateur de direction (triangle)
         direction_size = player_size * 0.4
-
-        # Calculate the points for the direction triangle based on orientation
         angle_rad = {1: math.pi / 2, 2: 0, 3: -math.pi / 2, 4: math.pi}[orientation]
 
         dx = math.cos(angle_rad) * direction_size
-        dy = -math.sin(angle_rad) * direction_size  # Negative because Y is flipped in Qt
+        dy = -math.sin(angle_rad) * direction_size
 
         triangle = QPolygonF()
         triangle.append(QPointF(px + dx, py + dy))
@@ -275,19 +326,43 @@ class MapView(QWidget):
                                                     QPen(Qt.GlobalColor.black, 1),
                                                     QBrush(QColor(255, 255, 255, 200)))
         direction_indicator.setZValue(11)
+        player_graphics.append(direction_indicator)
 
-        # Player ID and level text
-        id_text = self.scene.addText(f"#{player_id}")
-        id_text.setDefaultTextColor(QColor(255, 255, 255))
-        id_text.setPos(px - id_text.boundingRect().width() / 2,
-                       py - player_size / 2 - id_text.boundingRect().height())
-        id_text.setZValue(12)
+        # Textes d'ID et de niveau
+        #id_text = self.scene.addText(f"#{player_id}")
+        #id_text.setDefaultTextColor(QColor(255, 255, 255))
+        #id_text.setPos(px - id_text.boundingRect().width() / 2,
+        #               py - player_size / 2 - id_text.boundingRect().height())
+        #id_text.setZValue(12)
+        #player_graphics.append(id_text)
 
-        level_text = self.scene.addSimpleText(f"L{level}")
-        level_text.setBrush(QColor(255, 255, 200))
-        level_text.setPos(px - level_text.boundingRect().width() / 2,
-                          py + player_size / 2)
-        level_text.setZValue(12)
+        #level_text = self.scene.addSimpleText(f"L{level}")
+        #level_text.setBrush(QColor(255, 255, 200))
+        #level_text.setPos(px - level_text.boundingRect().width() / 2,
+        #                  py + player_size / 2)
+        #level_text.setZValue(12)
+        #player_graphics.append(level_text)
+
+        # Stocker les références aux éléments graphiques
+        self.player_items[player_id] = player_graphics
+
+    def update_display(self):
+        """Met à jour l'affichage en ne redessinant que les éléments nécessaires"""
+        # Mettre à jour le suivi du joueur si nécessaire
+        self.update_player_tracking()
+
+        # Mettre à jour la visibilité de la grille si nécessaire
+        for grid_item in self.grid_items:
+            grid_item.setVisible(self.show_grid)
+
+        # Mettre à jour la visibilité des coordonnées
+        for coord_text in self.coord_texts.values():
+            coord_text.setVisible(self.show_coordinates)
+
+        # Mettre à jour la visibilité des ressources
+        for resource_group in self.resource_items.values():
+            for item in resource_group:
+                item.setVisible(self.show_resources)
 
     def get_team_color(self, team_name):
         """Get a color for a team, creating one if needed"""

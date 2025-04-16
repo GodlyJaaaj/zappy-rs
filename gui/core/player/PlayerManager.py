@@ -8,6 +8,10 @@ class PlayerManager(QObject):
     player_updated = pyqtSignal(int)      # player_id
     player_removed = pyqtSignal(int)      # player_id
 
+    def clear(self):
+        """Efface tous les joueurs"""
+        self.players.clear()
+
     def __init__(self):
         super().__init__()
         self.players = {}  # player_id -> player dict
