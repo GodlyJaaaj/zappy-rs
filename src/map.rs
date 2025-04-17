@@ -1,7 +1,7 @@
 use crate::cell::Cell;
 use crate::egg::Egg;
 use crate::gui::Gui;
-use crate::protocol::{ClientSender, GUIResponse, HasId, Id, ServerResponse};
+use crate::protocol::{ClientSender, GUIResponse, Id, ServerResponse};
 use crate::resources::{Resource, Resources};
 use crate::vec2::{HasPosition, Position, Size, UPosition};
 use rand::Rng;
@@ -130,7 +130,7 @@ impl Map {
     }
 
     pub fn nb_eggs_by_team(&self, team_id: Id) -> u64 {
-        self.eggs.iter().filter(|egg| egg.id() == team_id).count() as u64
+        self.eggs.iter().filter(|egg| egg.team_id() == team_id).count() as u64
     }
 
     pub fn spawn_egg(&mut self, team_id: Id, pos: UPosition) -> Id {

@@ -205,7 +205,7 @@ impl Server {
             client_id
         );
         let server_tx = self.global_channel.tx.clone();
-        let (client_tx, client_rx) = mpsc::channel::<ServerResponse>(256);
+        let (client_tx, client_rx) = mpsc::channel::<ServerResponse>(8196);
         self.pending_clients.insert(
             client_id,
             PendingClient {
@@ -225,7 +225,7 @@ impl Server {
         //print!("\x1B[2J\x1B[1;1H"); // Effacer l'écran et replacer le curseur en haut à gauche
         //println!("{}", self.map);
         //println!("{:?}", self.clients);
-        self.event_scheduler.display_pending_events();
+        //self.event_scheduler.display_pending_events();
         self.spawn_resources();
         let expired_events = self.event_scheduler.tick();
         for timed_event in expired_events {
