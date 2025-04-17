@@ -2,8 +2,10 @@
 
 mod cell;
 mod connection;
+mod constant;
 mod egg;
 mod event;
+mod formater;
 mod gui;
 mod handler;
 mod map;
@@ -26,11 +28,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let server_config = ServerConfig::new(
         "0.0.0.0".to_string(),
         4242,
-        10,
-        10,
-        vec!["Team1".to_string(), "Team2".to_string()],
+        20,
+        20,
+        vec![
+            "team1".to_string(),
+            "Team1".to_string(),
+            "Team2".to_string(),
+            "GRAPHIC".to_string(),
+        ],
         4,
-        50,
+        100,
     );
     let mut server = Server::from_config(server_config).await?;
     server.run().await?;

@@ -1,7 +1,7 @@
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Vec2<T> {
-    pub(crate) x: T,
-    pub(crate) y: T,
+    x: T,
+    y: T,
 }
 
 pub type Position = Vec2<i64>;
@@ -28,6 +28,14 @@ impl<T: Copy> Vec2<T> {
     /// Get the y value
     pub fn y(&self) -> T {
         self.y
+    }
+
+    pub fn x_mut(&mut self) -> &mut T {
+        &mut self.x
+    }
+
+    pub fn y_mut(&mut self) -> &mut T {
+        &mut self.y
     }
 
     pub fn replace(&mut self, other: Vec2<T>) {

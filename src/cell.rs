@@ -1,8 +1,9 @@
 use crate::egg::Egg;
-use crate::resources::{InventoryFormat, Resource, Resources};
+use crate::formater::InventoryFormat;
+use crate::resources::{Resource, Resources};
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Cell {
     resources: Resources,
     eggs: Vec<Egg>,

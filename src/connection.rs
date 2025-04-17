@@ -1,13 +1,15 @@
+use crate::constant::MAX_LINE_SIZE;
 use crate::handler::ai::AiHandler;
 use crate::handler::command::{CommandHandler, CommandRes, State};
+use crate::handler::graphics::GraphicHandler;
 use crate::handler::login::LoginHandler;
 use crate::protocol::{EventType, ServerResponse, SharedAction};
 use log::{debug, error, warn};
 use std::time::Duration;
 use thiserror::Error;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
@@ -62,7 +64,7 @@ impl Connection {
         id: u64,
         socket: TcpStream,
         server_tx: mpsc::Sender<EventType>,
-    ) -> (Self, OwnedReadHalf) {
+    ) -> (Self, BufReader<OwnedReadHalf>) {
         let (read_half, write_half) = socket.into_split();
         let mut writer = write_half;
 
@@ -75,7 +77,7 @@ impl Connection {
                 server_tx,
                 command_handler: Box::new(LoginHandler::new(id)),
             },
-            read_half,
+            BufReader::new(read_half),
         )
     }
 
@@ -83,7 +85,7 @@ impl Connection {
     pub async fn handle(
         &mut self,
         client_rx: Receiver<ServerResponse>,
-        reader_half: OwnedReadHalf,
+        reader_half: BufReader<OwnedReadHalf>,
     ) -> Result<(), ConnectionError> {
         let (event_tx, mut event_rx) = mpsc::channel::<ConnectionEvent>(32);
 
@@ -148,13 +150,9 @@ impl Connection {
                                 break 'main;
                             }
                         }
-                        CommandRes::ChangeState(State::GUI(_)) => {
-                            warn!(
-                                "Client {}: GUI state not implemented yet",
-                                self.command_handler.id()
-                            );
-                            result = Err(ConnectionError::ForciblyClosedByServer);
-                            break 'main;
+                        CommandRes::ChangeState(State::GUI) => {
+                            self.command_handler =
+                                Box::new(GraphicHandler::new(self.command_handler.id()));
                         }
                         CommandRes::Response(res) => {
                             if let Err(e) = self.send_response_with_timeout(res).await {
@@ -194,19 +192,16 @@ impl Connection {
     /// Spawn a task that reads from the client socket
     fn spawn_reader_task(
         &self,
-        mut reader_half: OwnedReadHalf,
+        mut reader_half: BufReader<OwnedReadHalf>,
         event_tx: mpsc::Sender<ConnectionEvent>,
     ) -> JoinHandle<()> {
         let client_id = self.command_handler.id();
 
-        async fn read_line(reader_half: &mut OwnedReadHalf) -> Result<String, RecvError> {
-            const MAX_LINE_SIZE: usize = 8193;
-
+        async fn read_line(reader_half: &mut  BufReader<OwnedReadHalf>) -> Result<String, RecvError> {
             let mut line = String::new();
-            let mut limited_reader = BufReader::new(reader_half).take(MAX_LINE_SIZE as u64);
-            match limited_reader.read_line(&mut line).await {
+            match reader_half.read_line(&mut line).await {
                 Ok(0) => Err(RecvError::Closed),
-                Ok(MAX_LINE_SIZE) => Err(RecvError::ReachedTakeLimit),
+                Ok(n) if n > MAX_LINE_SIZE => Err(RecvError::ReachedTakeLimit),
                 Ok(_) => Ok(line),
                 Err(_) => Err(RecvError::InvalidUTF8),
             }

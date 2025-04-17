@@ -1,18 +1,20 @@
 use crate::connection::Connection;
+use crate::constant::{RELATIVE_DIRECTIONS, SATIETY_LOSS_PER_TICK};
 use crate::event::Event;
 use crate::event::EventScheduler;
+use crate::gui::{Gui, GuiBuilder};
 use crate::map::Map;
 use crate::pending::PendingClient;
-use crate::player::{Direction, Player, PlayerState, RelativeDirection};
+use crate::player::{Direction, Player, PlayerState};
 use crate::protocol::PendingResponse::{LogAs, Shared};
 use crate::protocol::{
-    AIAction, AIResponse, ClientSender, EventType, GameEvent, HasId, Id, PendingAction,
-    ServerResponse, SharedAction, SharedResponse, TeamType,
+    AIAction, AIResponse, BctResponse, ClientSender, EventType, GUIAction, GUIResponse, GameEvent,
+    HasId, Id, PendingAction, ServerResponse, SharedAction, SharedResponse, TeamType,
 };
 use crate::resources::{Resource, Resources, LEVEL_REQUIREMENTS};
 use crate::sound::get_sound_direction;
 use crate::team::Team;
-use crate::vec2::{HasPosition, Position, Size};
+use crate::vec2::{HasPosition, Position, Size, UPosition};
 use log::{debug, info, warn};
 use rand::Rng;
 use std::collections::HashMap;
@@ -20,9 +22,11 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
+use tokio::time::Instant;
 use tokio::{select, time};
 
 #[derive(Debug)]
@@ -71,7 +75,9 @@ pub struct Server {
     teams: HashMap<Id, Team>,
     pending_clients: HashMap<Id, PendingClient>,
     clients: HashMap<Id, Player>,
+    guis: HashMap<Id, Gui>,
     event_scheduler: EventScheduler<Event>,
+    last_gui_notify: Instant,
 }
 
 #[derive(Debug, Error)]
@@ -79,8 +85,6 @@ pub enum ServerError {
     #[error("socket error: {0}")]
     FailedToBind(#[from] std::io::Error),
 }
-
-const SATIETY_LOSS_PER_TICK: u64 = 1;
 
 impl Server {
     pub async fn from_config(config: ServerConfig) -> Result<Server, ServerError> {
@@ -94,8 +98,20 @@ impl Server {
 
         let mut teams: HashMap<Id, Team> = HashMap::new();
 
-        for (team_id, team) in config.teams.into_iter().enumerate() {
-            teams.insert(team_id as Id, Team::new(team_id as Id, team));
+        for (team_id, team_name) in config.teams.into_iter().enumerate() {
+            if team_name == "GRAPHIC" {
+                warn!("'GRAPHIC' can't be used as a team name and will be ignored");
+                continue;
+            }
+            teams.insert(
+                team_id as Id,
+                Team::new(
+                    team_id as Id,
+                    team_name
+                        .replace("\n", "_")
+                        .replace("\r", "_")
+                ),
+            );
         }
 
         let mut map = Map::new(Size::new(config.width as u64, config.height as u64));
@@ -112,7 +128,9 @@ impl Server {
             teams,
             pending_clients: HashMap::new(),
             clients: HashMap::new(),
+            guis: HashMap::new(),
             event_scheduler: EventScheduler::new(),
+            last_gui_notify: Instant::now(),
         })
     }
 
@@ -147,7 +165,8 @@ impl Server {
             (0..nb_missing).for_each(|_| {
                 let x = rand::rng().random_range(0..size_x);
                 let y = rand::rng().random_range(0..size_y);
-                self.map.add_resource(res, 1, (x, y).into());
+                let pos = UPosition::new(x, y);
+                self.map.add_resource(res, 1, pos, &mut self.guis);
             });
         }
     }
@@ -186,7 +205,7 @@ impl Server {
             client_id
         );
         let server_tx = self.global_channel.tx.clone();
-        let (client_tx, client_rx) = mpsc::channel::<ServerResponse>(32);
+        let (client_tx, client_rx) = mpsc::channel::<ServerResponse>(8196);
         self.pending_clients.insert(
             client_id,
             PendingClient {
@@ -206,7 +225,7 @@ impl Server {
         //print!("\x1B[2J\x1B[1;1H"); // Effacer l'écran et replacer le curseur en haut à gauche
         //println!("{}", self.map);
         //println!("{:?}", self.clients);
-        self.event_scheduler.display_pending_events();
+        //self.event_scheduler.display_pending_events();
         self.spawn_resources();
         let expired_events = self.event_scheduler.tick();
         for timed_event in expired_events {
@@ -229,6 +248,14 @@ impl Server {
                             str.clone(),
                         )));
                     }
+                    //gui
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Pbc(
+                            emitter.id(),
+                            str.clone(),
+                        )));
+                    }
+
                     emitter
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
                 }
@@ -239,6 +266,14 @@ impl Server {
                     emitter
                         .move_forward(&self.map.size())
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
+                    //gui
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                            emitter.id(),
+                            emitter.position(),
+                            emitter.direction(),
+                        )));
+                    }
                 }
                 Event::Right => {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
@@ -247,6 +282,14 @@ impl Server {
                     emitter.direction_mut().rotate_right();
                     emitter
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
+                    //gui
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                            emitter.id(),
+                            emitter.position(),
+                            emitter.direction(),
+                        )));
+                    }
                 }
                 Event::Left => {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
@@ -255,6 +298,15 @@ impl Server {
                     emitter.direction_mut().rotate_left();
                     emitter
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
+
+                    //gui
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                            emitter.id(),
+                            emitter.position(),
+                            emitter.direction(),
+                        )));
+                    }
                 }
                 Event::Look => {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
@@ -298,8 +350,19 @@ impl Server {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    self.map.spawn_egg(emitter.team_id(), emitter.position());
+                    let egg_id = self.map.spawn_egg(emitter.team_id(), emitter.position());
                     //todo egg hatching ? 600 ticks ?
+
+                    //gui
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Pfk(emitter.id())));
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Enw(
+                            egg_id,
+                            emitter.id(),
+                            emitter.position(),
+                        )));
+                    }
+
                     emitter
                         .send_to_client(ServerResponse::AI(AIResponse::Shared(SharedResponse::Ok)));
                 }
@@ -329,12 +392,6 @@ impl Server {
                         Direction::South => (0, -1),
                         Direction::West => (-1, 0),
                     };
-                    const RELATIVE_DIRECTIONS: [RelativeDirection; 4] = [
-                        RelativeDirection::Back,
-                        RelativeDirection::Left,
-                        RelativeDirection::Front,
-                        RelativeDirection::Right,
-                    ];
                     let nb_pushed_players = players_on_same_pos.len();
                     let new_pos = self
                         .map
@@ -345,6 +402,14 @@ impl Server {
                         let pushed_dir: i8 = player.direction().into();
                         let res = (direction - pushed_dir + 4).rem_euclid(4);
                         let res = RELATIVE_DIRECTIONS[res as usize];
+                        //gui
+                        for (.., gui) in &self.guis {
+                            gui.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                                player.id(),
+                                player.position(),
+                                player.direction(),
+                            )));
+                        }
                         player.send_to_client(ServerResponse::AI(AIResponse::Eject(res.into())));
                     }
                     let broken_eggs = self.map.break_eggs_at_pos(pusher_pos);
@@ -356,6 +421,16 @@ impl Server {
                             broken_eggs.len(),
                             nb_pushed_players
                         );
+                        //gui
+                        for (.., gui) in &self.guis {
+                            gui.send_to_client(ServerResponse::Gui(GUIResponse::Pex(emitter.id())));
+                            for broken_egg in &broken_eggs {
+                                gui.send_to_client(ServerResponse::Gui(GUIResponse::Edi(
+                                    broken_egg.id(),
+                                )));
+                            }
+                        }
+
                         emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
                             SharedResponse::Ok,
                         )));
@@ -369,13 +444,33 @@ impl Server {
                     let Some(emitter) = self.clients.get_mut(&timed_event.player_id) else {
                         continue;
                     };
-                    match self.map.del_resource(resource, 1, emitter.position()) {
+                    match self
+                        .map
+                        .del_resource(resource, 1, emitter.position(), &mut self.guis)
+                    {
                         None => {
                             emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
                                 SharedResponse::Ko,
                             )));
                         }
                         Some(_) => {
+                            //gui
+                            for (.., gui) in &self.guis {
+                                gui.send_to_client(ServerResponse::Gui(GUIResponse::Pgt(
+                                    emitter.id(),
+                                    resource,
+                                )));
+                                gui.send_to_client(ServerResponse::Gui(GUIResponse::Pin(
+                                    emitter.id(),
+                                    emitter.position(),
+                                    emitter.inventory(),
+                                )));
+                                gui.send_to_client(ServerResponse::Gui(GUIResponse::Bct((
+                                    emitter.position(),
+                                    self.map[emitter.position()].ressources().clone(),
+                                ))));
+                            }
+
                             emitter
                                 .add_resource(resource, 1)
                                 .send_to_client(ServerResponse::AI(AIResponse::Shared(
@@ -396,7 +491,25 @@ impl Server {
                             )));
                         }
                         Some(resource) => {
-                            self.map.add_resource(resource, 1, emitter.position());
+                            self.map
+                                .add_resource(resource, 1, emitter.position(), &mut self.guis);
+
+                            //gui
+                            for (.., gui) in &self.guis {
+                                gui.send_to_client(ServerResponse::Gui(GUIResponse::Pdr(
+                                    emitter.id(),
+                                    resource,
+                                )));
+                                gui.send_to_client(ServerResponse::Gui(GUIResponse::Pin(
+                                    emitter.id(),
+                                    emitter.position(),
+                                    emitter.inventory(),
+                                )));
+                                gui.send_to_client(ServerResponse::Gui(GUIResponse::Bct((
+                                    emitter.position(),
+                                    self.map[emitter.position()].ressources().clone(),
+                                ))));
+                            }
                             emitter.send_to_client(ServerResponse::AI(AIResponse::Shared(
                                 SharedResponse::Ok,
                             )));
@@ -454,7 +567,18 @@ impl Server {
                         }
                         println!("Player {} is now {:?}", id, player.state_mut());
                     }
+
                     let emitter = self.clients.get_mut(&timed_event.player_id).unwrap();
+
+                    //gui
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Pic(
+                            emitter_pos,
+                            emitter.level(),
+                            players_on_tile.clone(),
+                        )));
+                    }
+
                     let new_event =
                         Event::IncantationEnd(players_on_tile, requirement, emitter.position());
                     self.event_scheduler.schedule(new_event, 300, emitter.id());
@@ -477,6 +601,14 @@ impl Server {
                     if players_still_on_tile.len() < requirement.needed_players()
                         || !resources_on_tile.has_at_least(requirement.needed_resources())
                     {
+                        //gui
+                        for (.., gui) in &self.guis {
+                            gui.send_to_client(ServerResponse::Gui(GUIResponse::Pie(
+                                incantation_pos,
+                                false,
+                            )));
+                        }
+
                         for id in &players_incantating {
                             if let Some(client) = self.clients.get_mut(id) {
                                 client.send_to_client(ServerResponse::AI(AIResponse::Shared(
@@ -489,8 +621,12 @@ impl Server {
                     for resource_type in Resource::iter() {
                         let amount = requirement.needed_resources()[resource_type];
                         if amount > 0 {
-                            self.map
-                                .del_resource(resource_type, amount, incantation_pos);
+                            self.map.del_resource(
+                                resource_type,
+                                amount,
+                                incantation_pos,
+                                &mut self.guis,
+                            );
                         }
                     }
                     for id in &players_still_on_tile {
@@ -498,6 +634,22 @@ impl Server {
                         *client.level_mut() = client.level().upgrade();
                         client.send_to_client(ServerResponse::AI(AIResponse::LevelUp(
                             client.level(),
+                        )));
+
+                        //gui
+                        for (.., gui) in &self.guis {
+                            gui.send_to_client(ServerResponse::Gui(GUIResponse::Plv(
+                                client.id(),
+                                client.level(),
+                            )));
+                        }
+                    }
+
+                    //gui
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Pie(
+                            incantation_pos,
+                            true,
                         )));
                     }
                     debug!(
@@ -527,6 +679,21 @@ impl Server {
                 info!("Client {} is dead", id);
             }
         }
+
+        // Notify GUIs if at least 1 second passed
+        if self.last_gui_notify.elapsed() >= Duration::from_secs(1) {
+            self.last_gui_notify = Instant::now();
+
+            for client in self.clients.values() {
+                for (.., gui) in &self.guis {
+                    gui.send_to_client(ServerResponse::Gui(GUIResponse::Pin(
+                        client.id(),
+                        client.position(),
+                        client.inventory(),
+                    )));
+                }
+            }
+        }
     }
 
     async fn process_events(&mut self, event: EventType) {
@@ -535,8 +702,8 @@ impl Server {
             EventType::AI(GameEvent { id, action }) => {
                 self.handle_ai_events((id, action)).await;
             }
-            EventType::GUI(GameEvent { .. }) => {
-                unreachable!()
+            EventType::GUI(GameEvent { id, action }) => {
+                self.handle_gui_events((id, action)).await;
             }
             EventType::Pending(GameEvent { id, action }) => {
                 self.handle_pending_events((id, action)).await;
@@ -562,7 +729,9 @@ impl Server {
                 self.pending_clients.remove_entry(&id);
                 info!("Pending client: {} disconnected", id);
             }
-            PendingAction::Shared(SharedAction::InvalidAction) => unreachable!(),
+            PendingAction::Shared(
+                SharedAction::InvalidAction | SharedAction::InvalidParameters,
+            ) => unreachable!(),
             PendingAction::Shared(SharedAction::ReachedTakeLimit) => {
                 warn!("Pending client: {} sent too much data", id);
                 send_ko(client);
@@ -572,6 +741,18 @@ impl Server {
                 send_ko(client);
             }
             PendingAction::Login(team_name) => {
+                if team_name == "GRAPHIC" {
+                    let pending_client = self.pending_clients.remove(&id).unwrap();
+
+                    let new_gui = GuiBuilder::new()
+                        .pending_client(pending_client)
+                        .build()
+                        .unwrap();
+                    new_gui.send_to_client(ServerResponse::Pending(LogAs(TeamType::Graphic)));
+                    self.guis.insert(id, new_gui);
+                    return;
+                }
+
                 let Some(team) = self.teams.values().find(|team| team.name() == team_name) else {
                     send_ko(client);
                     return;
@@ -600,6 +781,18 @@ impl Server {
                     self.map.size(),
                 ))));
 
+                // gui
+                for (.., gui) in &self.guis {
+                    gui.send_to_client(ServerResponse::Gui(GUIResponse::Pnw(
+                        player.id(),
+                        player.position(),
+                        player.direction(),
+                        player.level(),
+                        team_name.clone(),
+                    )));
+                    gui.send_to_client(ServerResponse::Gui(GUIResponse::Ebo(egg.id())));
+                }
+
                 self.clients.insert(player.id(), player);
             }
         }
@@ -609,11 +802,15 @@ impl Server {
         match action {
             AIAction::Shared(shared) => match shared {
                 SharedAction::Disconnected => {
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Pdi(id)));
+                    }
                     self.clients.remove(&id);
                 }
                 SharedAction::InvalidAction
                 | SharedAction::ReachedTakeLimit
-                | SharedAction::InvalidEncoding => {
+                | SharedAction::InvalidEncoding
+                | SharedAction::InvalidParameters => {
                     self.event_scheduler.schedule(Event::Ko, 0, id);
                 }
             },
@@ -644,6 +841,127 @@ impl Server {
                     unreachable!()
                 }
             },
+        }
+    }
+
+    async fn handle_gui_events(&mut self, (id, action): (Id, GUIAction)) {
+        match action {
+            GUIAction::Shared(shared) => match shared {
+                SharedAction::Disconnected => {
+                    self.guis.remove(&id);
+                }
+                SharedAction::InvalidAction
+                | SharedAction::ReachedTakeLimit
+                | SharedAction::InvalidEncoding => {
+                    if let Some(emitter) = self.guis.get_mut(&id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Shared(
+                            SharedResponse::Ko,
+                        )));
+                    }
+                }
+                SharedAction::InvalidParameters => {
+                    if let Some(emitter) = self.guis.get_mut(&id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                    }
+                }
+            },
+            GUIAction::Msz => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Msz(self.map.size())));
+                }
+            }
+            GUIAction::Bct(pos) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let Some(cell) = self.map.get(pos) else {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                        return;
+                    };
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Bct((
+                        pos,
+                        cell.ressources().clone(),
+                    ))));
+                }
+            }
+            GUIAction::Mct => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let bct_responses: Vec<BctResponse> = self
+                        .map
+                        .cells_with_positions()
+                        .map(|(pos, cell)| (pos, cell.ressources().clone()))
+                        .collect();
+
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Mct(bct_responses)));
+                }
+            }
+            GUIAction::Tna => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let team_name = self
+                        .teams
+                        .iter()
+                        .map(|(.., team_name)| team_name.name().to_string())
+                        .collect::<Vec<_>>();
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Tna(team_name)));
+                }
+            }
+            GUIAction::Ppo(player_id) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    if let Some(player) = self.clients.get(&player_id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Ppo(
+                            player_id,
+                            player.position(),
+                            player.direction(),
+                        )));
+                    } else {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                    }
+                }
+            }
+            GUIAction::Plv(player_id) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    if let Some(player) = self.clients.get(&player_id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Plv(
+                            player_id,
+                            player.level(),
+                        )));
+                    } else {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                    }
+                }
+            }
+            GUIAction::Pin(player_id) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    if let Some(player) = self.clients.get(&player_id) {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Pin(
+                            player_id,
+                            player.position(),
+                            player.inventory(),
+                        )));
+                    } else {
+                        emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sbp));
+                    }
+                }
+            }
+            GUIAction::Sgt => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let freq =
+                        (1_000_000_000f64 / self.tick_interval.period().as_nanos() as f64) as u64;
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sgt(freq)));
+                }
+            }
+            GUIAction::Sst(freq) => {
+                if let Some(emitter) = self.guis.get_mut(&id) {
+                    let tick_interval = time::interval(time::Duration::from_nanos(
+                        (1_000_000_000f64 / freq as f64) as u64,
+                    ));
+                    self.tick_interval = tick_interval;
+                    emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sst(freq)));
+                    for (.., gui) in &self.guis {
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Sgt(
+                            freq
+                        )));
+                    }
+                }
+            }
         }
     }
 }

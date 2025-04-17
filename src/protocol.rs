@@ -1,8 +1,8 @@
-use crate::resources::Resource::{Deraumere, Food, Linemate, Mendiane, Phiras, Sibur, Thystame};
-use crate::resources::{ElevationLevel, Resources};
-use crate::vec2::Size;
+use crate::player::Direction;
+use crate::resources::{ElevationLevel, Resource, Resources};
+use crate::vec2::{Size, UPosition};
 use log::error;
-use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 
 pub type Id = u64;
@@ -15,6 +15,7 @@ pub trait HasId {
 pub enum SharedAction {
     Disconnected,
     InvalidAction,
+    InvalidParameters,
     ReachedTakeLimit,
     InvalidEncoding,
 }
@@ -34,6 +35,15 @@ pub enum AIAction {
 #[derive(Debug)]
 pub enum GUIAction {
     Shared(SharedAction),
+    Msz,
+    Bct(UPosition),
+    Mct,
+    Tna,
+    Ppo(Id),
+    Plv(Id),
+    Pin(Id),
+    Sgt,
+    Sst(u64),
 }
 
 #[derive(Debug)]
@@ -42,7 +52,7 @@ pub enum PendingAction {
     Login(String),
 }
 
-type LookResult = Vec<(u64, Resources)>; // u64 = how many players on this cell
+pub(crate) type LookResult = Vec<(u64, Resources)>; // u64 = how many players on this cell
 
 #[derive(Debug)]
 pub enum AIResponse {
@@ -57,52 +67,36 @@ pub enum AIResponse {
     Look(LookResult),
 }
 
-pub struct LookFormat<'a>(pub &'a LookResult);
-
-impl fmt::Display for LookFormat<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let cells = self.0;
-        let mut formatted_cells = Vec::new();
-
-        for (player_count, resources) in cells {
-            let mut cell_elements = Vec::new();
-
-            // Add players
-            for _ in 0..*player_count {
-                cell_elements.push("player".to_string());
-            }
-
-            // Add resources
-            let resource_names = [
-                ("food", Food),
-                ("linemate", Linemate),
-                ("deraumere", Deraumere),
-                ("sibur", Sibur),
-                ("mendiane", Mendiane),
-                ("phiras", Phiras),
-                ("thystame", Thystame),
-            ];
-
-            for &(name, index) in &resource_names {
-                for _ in 0..resources[index] {
-                    cell_elements.push(name.to_string());
-                }
-            }
-
-            if !formatted_cells.is_empty() {
-                cell_elements.insert(0, "".to_string());
-            }
-
-            formatted_cells.push(cell_elements.join(" "));
-        }
-
-        write!(f, "[{}]", formatted_cells.join(","))
-    }
-}
+pub type BctResponse = (UPosition, Resources);
 
 #[derive(Debug)]
 pub enum GUIResponse {
     Shared(SharedResponse),
+    Sbp,
+
+    Msz(UPosition),
+    Bct(BctResponse),
+    Mct(Vec<BctResponse>),
+    Tna(Vec<String>),
+    Pnw(Id, UPosition, Direction, ElevationLevel, String),
+    Ppo(Id, UPosition, Direction),
+    Plv(Id, ElevationLevel),
+    Pin(Id, UPosition, Resources),
+    Pex(Id),
+    Pbc(Id, Arc<String>),
+    Pic(UPosition, ElevationLevel, Vec<Id>),
+    Pie(UPosition, bool),
+    Pfk(Id),
+    Pdr(Id, Resource),
+    Pgt(Id, Resource),
+    Pdi(Id),
+    Enw(Id, Id, UPosition),
+    Ebo(Id),
+    Edi(Id),
+    Sgt(u64),
+    Sst(u64),
+    Seg(String),
+    Smg(Arc<String>),
 }
 
 #[derive(Debug)]
@@ -120,7 +114,7 @@ pub enum PendingResponse {
 #[derive(Debug)]
 pub enum ServerResponse {
     AI(AIResponse),
-    GUI(GUIResponse),
+    Gui(GUIResponse),
     Pending(PendingResponse),
 }
 
@@ -152,4 +146,9 @@ pub trait ClientSender {
         };
         self
     }
+}
+
+pub fn parse_prefixed_id<T: FromStr>(input: &str, prefix: char) -> Option<T> {
+    let cleaned = input.trim().strip_prefix(prefix).unwrap_or(input);
+    cleaned.parse::<T>().ok()
 }
