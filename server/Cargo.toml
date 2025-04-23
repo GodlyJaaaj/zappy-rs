@@ -1,0 +1,11 @@
+[package]
+name = "server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { version = "1.44.2", features = ["full"] }
+rand = "0.9.0"
+env_logger.workspace = true
+log.workspace = true
+thiserror = "2.0.12"

@@ -11,7 +11,7 @@ use crate::protocol::{
     AIAction, AIResponse, BctResponse, ClientSender, EventType, GUIAction, GUIResponse, GameEvent,
     HasId, Id, PendingAction, ServerResponse, SharedAction, SharedResponse, TeamType,
 };
-use crate::resources::{Resource, Resources, LEVEL_REQUIREMENTS};
+use crate::resources::{LEVEL_REQUIREMENTS, Resource, Resources};
 use crate::sound::get_sound_direction;
 use crate::team::Team;
 use crate::vec2::{HasPosition, Position, Size, UPosition};
@@ -20,8 +20,8 @@ use rand::Rng;
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
@@ -107,9 +107,7 @@ impl Server {
                 team_id as Id,
                 Team::new(
                     team_id as Id,
-                    team_name
-                        .replace("\n", "_")
-                        .replace("\r", "_")
+                    team_name.replace("\n", "_").replace("\r", "_"),
                 ),
             );
         }
@@ -956,9 +954,7 @@ impl Server {
                     self.tick_interval = tick_interval;
                     emitter.send_to_client(ServerResponse::Gui(GUIResponse::Sst(freq)));
                     for (.., gui) in &self.guis {
-                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Sgt(
-                            freq
-                        )));
+                        gui.send_to_client(ServerResponse::Gui(GUIResponse::Sgt(freq)));
                     }
                 }
             }

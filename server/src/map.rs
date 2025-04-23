@@ -130,7 +130,10 @@ impl Map {
     }
 
     pub fn nb_eggs_by_team(&self, team_id: Id) -> u64 {
-        self.eggs.iter().filter(|egg| egg.team_id() == team_id).count() as u64
+        self.eggs
+            .iter()
+            .filter(|egg| egg.team_id() == team_id)
+            .count() as u64
     }
 
     pub fn spawn_egg(&mut self, team_id: Id, pos: UPosition) -> Id {

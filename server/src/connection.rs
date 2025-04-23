@@ -8,8 +8,8 @@ use log::{debug, error, warn};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
@@ -197,7 +197,9 @@ impl Connection {
     ) -> JoinHandle<()> {
         let client_id = self.command_handler.id();
 
-        async fn read_line(reader_half: &mut  BufReader<OwnedReadHalf>) -> Result<String, RecvError> {
+        async fn read_line(
+            reader_half: &mut BufReader<OwnedReadHalf>,
+        ) -> Result<String, RecvError> {
             let mut line = String::new();
             match reader_half.read_line(&mut line).await {
                 Ok(0) => Err(RecvError::Closed),

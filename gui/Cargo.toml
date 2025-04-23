@@ -1,0 +1,8 @@
+[package]
+name = "gui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+iced = { version = "0.13.1", features = ["canvas", "debug"] }
+env_logger.workspace = true
