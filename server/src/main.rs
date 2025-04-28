@@ -20,10 +20,11 @@ mod vec2;
 
 use crate::server::{Server, ServerConfig};
 use std::error::Error;
+use env_logger::Env;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init();
 
     let server_config = ServerConfig::new(
         "0.0.0.0".to_string(),
