@@ -13,6 +13,7 @@ pub enum NetworkOutput {
     Connected(SocketAddrV4, mpsc::Sender<GuiToServerMessage>),
     Disconnected,
     ConnectionFailed(SocketAddrV4, String),
+    ServerMessage(ServerMessage),
 }
 
 pub enum NetworkInput {
@@ -20,8 +21,43 @@ pub enum NetworkInput {
     Disconnect,
 }
 
-pub enum GuiToServerMessage {
-    // Add your message types here
+pub enum GuiToServerMessage {}
+
+#[derive(Clone, Debug)]
+pub enum ServerMessage {
+    MapSize { _width: u32, _height: u32 },
+    TeamName { _name: String },
+    Other(()), // For any other messages
+}
+
+fn parse_server_message(msg: &str) -> Option<ServerMessage> {
+    let parts: Vec<&str> = msg.split_whitespace().collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    match parts[0] {
+        "msz" => {
+            if parts.len() >= 3 {
+                if let (Ok(width), Ok(height)) = (parts[1].parse::<u32>(), parts[2].parse::<u32>())
+                {
+                    return Some(ServerMessage::MapSize {
+                        _width: width,
+                        _height: height,
+                    });
+                }
+            }
+        }
+        "tna" => {
+            if parts.len() >= 2 {
+                return Some(ServerMessage::TeamName {
+                    _name: parts[1].to_string(),
+                });
+            }
+        }
+        _ => return Some(ServerMessage::Other(())),
+    }
+    None
 }
 
 async fn handle_connection(
@@ -34,6 +70,8 @@ async fn handle_connection(
         Ok(mut s) => {
             let _ = s.write_all(b"GRAPHIC\n").await;
             let _ = output_clone.try_send(NetworkOutput::Connected(addr, cmd_sender));
+            let _ = s.write_all(b"msz\n").await;
+            let _ = s.write_all(b"tna\n").await;
 
             let mut buffer = [0u8; 1024];
             loop {
@@ -46,8 +84,19 @@ async fn handle_connection(
                                 break;
                             }
                             Ok(n) => {
-                                info!("Got {} bytes from server", n);
+                                let received = buffer.iter().take(n.saturating_sub(1)).map(|b| *b as char).collect::<String>();
+                                info!("Got {} bytes from server : [{}]", n, received);
+
+                                // Process each line separately
+                                for line in received.lines() {
+                                    if let Some(parsed_msg) = parse_server_message(line) {
+                                        info!("Parsed message: {:?}", parsed_msg);
+                                        // Forward the parsed message to the GUI
+                                        let _ = output_clone.try_send(NetworkOutput::ServerMessage(parsed_msg));
+                                    }
+                                }
                             }
+
                             Err(e) => {
                                 error!("Failed to read from server: {}", e);
                                 let _ = output_clone.try_send(NetworkOutput::Disconnected);
@@ -57,7 +106,6 @@ async fn handle_connection(
                     }
                     cmd = cmd_receiver.select_next_some() => {
                         match cmd {
-
                         }
                     }
                 }

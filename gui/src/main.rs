@@ -1,14 +1,17 @@
 mod footer;
+mod game;
 mod navbar;
 mod network;
 mod views;
 
 use crate::footer::{Footer, FooterMessage};
 use crate::navbar::{ConnectionState, Navbar, NavbarMessage};
-use crate::network::{GuiToServerMessage, NetworkInput, NetworkOutput, network_worker};
+use crate::network::{
+    GuiToServerMessage, NetworkInput, NetworkOutput, ServerMessage, network_worker,
+};
 use env_logger::Env;
 use iced::futures::channel::mpsc;
-use iced::widget::container::{bordered_box, rounded_box};
+use iced::widget::container::bordered_box;
 use iced::widget::{column, container, text};
 use iced::window::Settings;
 use iced::{Element, Length, Size, Subscription};
@@ -65,6 +68,8 @@ struct ZappyGui {
     network: Option<mpsc::Sender<NetworkInput>>,
     // network channel to send commands directly to the server
     active_connection: Option<mpsc::Sender<GuiToServerMessage>>,
+
+    game_state: game::GameState,
 }
 
 impl ZappyGui {
@@ -91,6 +96,8 @@ impl ZappyGui {
                         let _ = network_sender.try_send(NetworkInput::Disconnect);
                     }
                     self.active_connection = None;
+                    self.map_view.reset();
+                    self.game_state.reset();
                     self.navbar.update(navbar_message);
                     self.footer.update(FooterMessage::ConnectionStatusChanged(
                         footer::ConnectionStatus::Disconnected,
@@ -125,6 +132,8 @@ impl ZappyGui {
                 NetworkOutput::Disconnected => {
                     warn!("Network is disconnected, connection closed");
                     self.active_connection = None;
+                    self.map_view.reset();
+                    self.game_state.reset();
                     self.footer.update(FooterMessage::ConnectionStatusChanged(
                         footer::ConnectionStatus::Disconnected,
                     ));
@@ -138,6 +147,20 @@ impl ZappyGui {
                     ));
                     self.navbar
                         .set_connection_state(navbar::ConnectionState::Disconnected);
+                }
+                NetworkOutput::ServerMessage(server_msg) => {
+                    match server_msg {
+                        ServerMessage::MapSize { _width, _height } => {
+                            self.game_state.update_map_size(_width, _height);
+                        }
+                        ServerMessage::TeamName { _name } => {
+                            // Add team to your view
+                            //self.teams.push(_name);
+                        }
+                        ServerMessage::Other(_) => {
+                            // Handle other messages if needed
+                        }
+                    }
                 }
             },
             Message::Map(map_message) => {
@@ -161,7 +184,7 @@ impl ZappyGui {
 
         let content = if self.navbar.connection_state() == ConnectionState::Connected {
             container(match self.navbar.active_tab() {
-                Tab::Map => self.map_view.view().map(Message::Map),
+                Tab::Map => self.map_view.view(&self.game_state).map(Message::Map),
                 Tab::Settings => self.settings_view.view().map(Message::Settings),
                 Tab::Logs => self.logs_view.view().map(Message::Logs),
             })
