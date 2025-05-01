@@ -1,13 +1,15 @@
 mod footer;
 mod navbar;
 mod network;
+mod views;
 
 use crate::footer::{Footer, FooterMessage};
-use crate::navbar::{Navbar, NavbarMessage};
+use crate::navbar::{ConnectionState, Navbar, NavbarMessage};
 use crate::network::{GuiToServerMessage, NetworkInput, NetworkOutput, network_worker};
 use env_logger::Env;
 use iced::futures::channel::mpsc;
-use iced::widget::{column, text};
+use iced::widget::container::{bordered_box, rounded_box};
+use iced::widget::{column, container, text};
 use iced::window::Settings;
 use iced::{Element, Length, Size, Subscription};
 use log::{error, info, warn};
@@ -38,6 +40,9 @@ enum Message {
     Navbar(NavbarMessage),
     Footer(FooterMessage),
     Network(NetworkOutput),
+    Map(views::MapMessage),
+    Settings(views::SettingsMessage),
+    Logs(views::LogsMessage),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -47,13 +52,18 @@ enum Tab {
     Logs,
     Settings,
 }
+
 #[derive(Default)]
 struct ZappyGui {
     navbar: Navbar,
     footer: Footer,
-    //network worker channel should never be closed
+    // Vues
+    map_view: views::MapView,
+    settings_view: views::SettingsView,
+    logs_view: views::LogsView,
+    // network worker channel should never be closed
     network: Option<mpsc::Sender<NetworkInput>>,
-    //network channel to send commands directly to the server
+    // network channel to send commands directly to the server
     active_connection: Option<mpsc::Sender<GuiToServerMessage>>,
 }
 
@@ -130,6 +140,15 @@ impl ZappyGui {
                         .set_connection_state(navbar::ConnectionState::Disconnected);
                 }
             },
+            Message::Map(map_message) => {
+                self.map_view.update(map_message);
+            }
+            Message::Settings(settings_message) => {
+                self.settings_view.update(settings_message);
+            }
+            Message::Logs(logs_message) => {
+                self.logs_view.update(logs_message);
+            }
         }
     }
 
@@ -137,17 +156,29 @@ impl ZappyGui {
         Subscription::run(network_worker).map(Message::Network)
     }
 
-    fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<Message> {
         let navbar = self.navbar.view().map(Message::Navbar);
 
-        let content = match self.navbar.active_tab() {
-            Tab::Settings => column![text("Information sur l'application")],
-            Tab::Map => column![text("Information sur la map")],
-            Tab::Logs => column![text("Information sur les logs")],
+        let content = if self.navbar.connection_state() == ConnectionState::Connected {
+            container(match self.navbar.active_tab() {
+                Tab::Map => self.map_view.view().map(Message::Map),
+                Tab::Settings => self.settings_view.view().map(Message::Settings),
+                Tab::Logs => self.logs_view.view().map(Message::Logs),
+            })
+        } else {
+            container(text("Please connect to the server to view the content.").size(24))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(bordered_box)
         };
 
         let footer = self.footer.view().map(Message::Footer);
 
-        column![navbar, content.height(Length::Fill), footer].into()
+        column![
+            navbar,
+            content.width(Length::Fill).height(Length::Fill),
+            footer
+        ]
+            .into()
     }
 }

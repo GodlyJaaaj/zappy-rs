@@ -30,7 +30,7 @@ impl Default for Navbar {
     fn default() -> Self {
         Self {
             active_tab: Tab::default(),
-            ip: String::from("127.0.0.1"),
+            ip: String::from("192.168.1.161"),
             port: String::from("4242"),
             connection_state: ConnectionState::Disconnected,
         }
@@ -38,6 +38,10 @@ impl Default for Navbar {
 }
 
 impl Navbar {
+    pub fn connection_state(&self) -> ConnectionState {
+        self.connection_state
+    }
+
     pub fn update(&mut self, message: NavbarMessage) {
         match message {
             NavbarMessage::TabSelected(tab) => {
