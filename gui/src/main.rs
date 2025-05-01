@@ -1,136 +1,117 @@
-use iced::widget::{button, canvas, column, container, row, text};
-use iced::{Element, Fill, Theme};
+mod footer;
+mod navbar;
+mod network;
+
+use crate::footer::{Footer, FooterMessage};
+use crate::navbar::{Navbar, NavbarMessage};
+use crate::network::{GuiToServerMessage, NetworkInput, NetworkOutput, network_worker};
+use env_logger::Env;
+use iced::futures::channel::mpsc;
+use iced::widget::{column, text};
+use iced::window::Settings;
+use iced::{Element, Length, Size, Subscription};
+use log::{error, info};
+use std::default::Default;
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 pub fn main() -> iced::Result {
-    iced::application("A counter", ZappyGui::update, ZappyGui::view)
-        .theme(|_| Theme::Dark)
-        .centered()
-        .run()
+    env_logger::Builder::from_env(Env::default().default_filter_or("gui=trace")).init();
+
+    let mut windows_settings = Settings::default();
+    windows_settings.min_size = Some(Size::new(600.0, 600.0));
+    windows_settings.size = Size::new(800.0, 600.0);
+
+    iced::application(
+        "Zappy GUI made By Sébastien LUCAS",
+        ZappyGui::update,
+        ZappyGui::view,
+    )
+    .window(Settings::from(windows_settings))
+    .centered()
+    .antialiasing(true)
+    .subscription(ZappyGui::start_network)
+    .run()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Message {
-    TabSelected(Tab),
-    IncrementCounter,
+    Navbar(NavbarMessage),
+    Footer(FooterMessage),
+    Network(NetworkOutput),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Tab {
-    Canvas,
+    #[default]
+    Map,
+    Logs,
     Settings,
-    Info,
 }
-
-impl Default for Tab {
-    fn default() -> Self {
-        Tab::Canvas
-    }
-}
-
 #[derive(Default)]
 struct ZappyGui {
-    active_tab: Tab,
-    circle_state: CircleState
+    navbar: Navbar,
+    footer: Footer,
+    network: Option<mpsc::Sender<NetworkInput>>,
+    active_connection: Option<mpsc::Sender<GuiToServerMessage>>,
 }
 
 impl ZappyGui {
     fn update(&mut self, message: Message) {
         match message {
-            Message::TabSelected(tab) => {
-                self.active_tab = tab;
+            Message::Navbar(navbar_message) => match navbar_message {
+                NavbarMessage::Connect(ip, port) => {
+                    let socket_addr = match ip.parse::<Ipv4Addr>() {
+                        Ok(ip) => SocketAddrV4::new(ip, port.parse::<u16>().unwrap()),
+                        Err(err) => {
+                            error!("Invalid IP address {}", err);
+                            return;
+                        }
+                    };
+                    self.network
+                        .as_mut()
+                        .unwrap()
+                        .try_send(NetworkInput::Connect(socket_addr))
+                        .unwrap();
+                }
+                _ => {
+                    self.navbar.update(navbar_message);
+                }
+            },
+            Message::Footer(footer_message) => {
+                self.footer.update(footer_message);
             }
-            Message::IncrementCounter => {
-                self.circle_state.counter += 10;
-            }
+            Message::Network(event) => match event {
+                NetworkOutput::Ready(sender) => {
+                    info!("Network is ready");
+                    self.network = Some(sender);
+                }
+                NetworkOutput::Connected(addr, cmd_sender) => {
+                    info!("Network is connected to {}", addr);
+                    self.active_connection = Some(cmd_sender);
+                }
+                NetworkOutput::Disconnected => {
+                    info!("Network is disconnected, connection closed");
+                    self.active_connection = None;
+                }
+            },
         }
     }
 
+    fn start_network(&self) -> Subscription<Message> {
+        Subscription::run(network_worker).map(Message::Network)
+    }
+
     fn view(&self) -> Element<Message> {
-        let tab_canvas = button("Canvas")
-            .on_press(Message::TabSelected(Tab::Canvas))
-            .style(button::primary);
+        let navbar = self.navbar.view().map(Message::Navbar);
 
-        let tab_settings = button("Paramètres")
-            .on_press(Message::TabSelected(Tab::Settings))
-            .style(button::primary);
-
-        let tab_info = button("Info")
-            .on_press(Message::TabSelected(Tab::Info))
-            .style(button::primary);
-
-        let idk = button("idk")
-            .on_press(Message::IncrementCounter)
-            .style(button::primary);
-
-        let circle_canvas = canvas(Circle { radius: self.circle_state.counter as f32 })
-            .width(200)
-            .height(200);
-
-        // Contenu basé sur l'onglet actif
-
-        let content = match self.active_tab {
-            Tab::Canvas => {
-                column![container(circle_canvas)
-                    .width(Fill)
-                    .style(container::bordered_box)]
-            }
-            Tab::Info => {
-                column![text("Information sur l'application")]
-            }
-            _ => {
-                column![text("Paramètres de l'application")]
-            }
+        let content = match self.navbar.active_tab() {
+            Tab::Settings => column![text("Information sur l'application")],
+            Tab::Map => column![text("Information sur la map")],
+            Tab::Logs => column![text("Information sur les logs")],
         };
 
-        // Structure finale
-        column![
-            row![tab_canvas, tab_settings, tab_info, idk].spacing(10),
-            content
-        ]
-        .into()
-    }
-}
+        let footer = self.footer.view().map(Message::Footer);
 
-use iced::mouse;
-use iced::{Color, Rectangle, Renderer};
-
-// First, we define the data we need for drawing
-#[derive(Debug)]
-struct Circle {
-    radius: f32,
-}
-
-#[derive(Debug, Default, Clone)]
-struct CircleState {
-    counter: u32,
-}
-
-// Then, we implement the `Program` trait
-impl<Message> canvas::Program<Message> for Circle {
-    type State = CircleState;
-
-    fn draw(
-        &self,
-        state: &CircleState,
-        renderer: &Renderer,
-        _theme: &Theme,
-        bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let mut frame = canvas::Frame::new(renderer, bounds.size());
-
-        // Dessiner le cercle
-        let circle = canvas::Path::circle(frame.center(), self.radius);
-        frame.fill(&circle, Color::BLACK);
-
-        // Afficher le compteur
-        let text = format!("Compteur: {}", self.radius);
-        vec![frame.into_geometry()]
-    }
-}
-
-impl Circle {
-    fn increment(&mut self) {
-        self.radius += 1.0;
+        column![navbar, content.height(Length::Fill), footer].into()
     }
 }

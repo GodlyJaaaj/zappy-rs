@@ -19,8 +19,8 @@ mod team;
 mod vec2;
 
 use crate::server::{Server, ServerConfig};
-use std::error::Error;
 use env_logger::Env;
+use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
