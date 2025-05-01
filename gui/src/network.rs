@@ -1,7 +1,7 @@
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use iced_futures::stream;
-use log::{error, info};
+use log::{error, info, warn};
 use std::net::SocketAddrV4;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -12,10 +12,12 @@ pub enum NetworkOutput {
     Ready(mpsc::Sender<NetworkInput>),
     Connected(SocketAddrV4, mpsc::Sender<GuiToServerMessage>),
     Disconnected,
+    ConnectionFailed(SocketAddrV4, String),
 }
 
 pub enum NetworkInput {
     Connect(SocketAddrV4),
+    Disconnect,
 }
 
 pub enum GuiToServerMessage {
@@ -31,9 +33,7 @@ async fn handle_connection(
     match TcpStream::connect(addr).await {
         Ok(mut s) => {
             let _ = s.write_all(b"GRAPHIC\n").await;
-            let _ = output_clone
-                .send(NetworkOutput::Connected(addr, cmd_sender))
-                .await;
+            let _ = output_clone.try_send(NetworkOutput::Connected(addr, cmd_sender));
 
             let mut buffer = [0u8; 1024];
             loop {
@@ -42,7 +42,7 @@ async fn handle_connection(
                         match result {
                             Ok(0) => {
                                 info!("Connection closed by server");
-                                let  _ = output_clone.send(NetworkOutput::Disconnected).await;
+                                let  _ = output_clone.try_send(NetworkOutput::Disconnected);
                                 break;
                             }
                             Ok(n) => {
@@ -50,6 +50,7 @@ async fn handle_connection(
                             }
                             Err(e) => {
                                 error!("Failed to read from server: {}", e);
+                                let _ = output_clone.try_send(NetworkOutput::Disconnected);
                                 break;
                             }
                         }
@@ -62,8 +63,12 @@ async fn handle_connection(
                 }
             }
         }
-        Err(err) => {
-            error!("Failed to connect to {}: {}", addr, err);
+        Err(e) => {
+            warn!("Failed to connect to server : {}", e);
+            let _ = output_clone.try_send(NetworkOutput::ConnectionFailed(
+                addr,
+                "Cannot connect to server.".to_string(),
+            ));
         }
     }
 }
@@ -79,9 +84,7 @@ pub fn network_worker() -> impl Stream<Item = NetworkOutput> {
             let input = receiver.select_next_some().await;
             match input {
                 NetworkInput::Connect(addr) => {
-                    info!("New connection request to {}", addr);
                     if let Some(handle) = current_connection.take() {
-                        info!("Cancelling previous connection");
                         handle.abort();
                     }
 
@@ -96,6 +99,12 @@ pub fn network_worker() -> impl Stream<Item = NetworkOutput> {
                         cmd_receiver,
                     ));
                     current_connection = Some(task);
+                }
+                NetworkInput::Disconnect => {
+                    if let Some(handle) = current_connection.take() {
+                        handle.abort();
+                        let _ = output.try_send(NetworkOutput::Disconnected);
+                    }
                 }
             }
         }

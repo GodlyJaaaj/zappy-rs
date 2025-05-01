@@ -9,12 +9,21 @@ pub enum NavbarMessage {
     ChangeIp(String),
     ChangePort(String),
     Connect(String, String),
+    Disconnect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ConnectionState {
+    Disconnected,
+    Connected,
+    Connecting,
 }
 
 pub struct Navbar {
     active_tab: Tab,
     pub ip: String,
     pub port: String,
+    connection_state: ConnectionState,
 }
 
 impl Default for Navbar {
@@ -23,6 +32,7 @@ impl Default for Navbar {
             active_tab: Tab::default(),
             ip: String::from("127.0.0.1"),
             port: String::from("4242"),
+            connection_state: ConnectionState::Disconnected,
         }
     }
 }
@@ -39,21 +49,41 @@ impl Navbar {
             NavbarMessage::ChangePort(content) => {
                 self.port = content;
             }
-            _ => {}
+            NavbarMessage::Connect(_, _) => {
+                self.connection_state = ConnectionState::Connecting;
+            }
+            NavbarMessage::Disconnect => {
+                self.connection_state = ConnectionState::Disconnected;
+            }
         }
+    }
+
+    pub fn set_connection_state(&mut self, state: ConnectionState) {
+        self.connection_state = state;
     }
 
     pub fn view(&self) -> Element<NavbarMessage> {
         let ip_input = text_input("IP", &self.ip)
             .on_input(NavbarMessage::ChangeIp)
             .width(Length::FillPortion(3));
+
         let port_input = text_input("Port", &self.port)
             .on_input(NavbarMessage::ChangePort)
             .width(Length::FillPortion(1));
-        let login_button = button("Login")
-            .style(button::primary)
-            .width(Length::Shrink)
-            .on_press(NavbarMessage::Connect(self.ip.clone(), self.port.clone()));
+
+        let connection_button = match self.connection_state {
+            ConnectionState::Disconnected => button("Connect")
+                .style(button::primary)
+                .width(Length::Shrink)
+                .on_press(NavbarMessage::Connect(self.ip.clone(), self.port.clone())),
+            ConnectionState::Connected => button("Disconnect")
+                .style(button::danger)
+                .width(Length::Shrink)
+                .on_press(NavbarMessage::Disconnect),
+            ConnectionState::Connecting => button("Connecting...")
+                .style(button::primary)
+                .width(Length::Shrink),
+        };
 
         fn create_tab_button(
             label: &str,
@@ -77,7 +107,7 @@ impl Navbar {
             row![
                 ip_input,
                 port_input,
-                login_button,
+                connection_button,
                 vertical_rule(5),
                 tab_canvas,
                 tab_settings,
