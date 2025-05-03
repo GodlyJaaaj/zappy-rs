@@ -1,9 +1,9 @@
-use alignment::Vertical;
-use iced::widget::{canvas, Container, Text};
-use iced::{alignment, Color, Element, Length, Pixels, Point, Rectangle, Vector};
-use iced::{mouse, Size};
-use iced_futures::core::alignment::Horizontal;
 use crate::game::GameState;
+use alignment::Vertical;
+use iced::widget::{Checkbox, Column, Container, Text, canvas, scrollable};
+use iced::{Color, Element, Length, Pixels, Point, Rectangle, Vector, alignment};
+use iced::{Size, mouse};
+use iced_futures::core::alignment::Horizontal;
 
 pub struct MapView {
     min_tile_size: f32,
@@ -11,6 +11,9 @@ pub struct MapView {
     zoom_level: f32,
     offset: Point,
     drag_start: Option<Point>,
+
+    // Right panel
+    show_coordinates: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -19,6 +22,8 @@ pub enum MapMessage {
     DragStart(Point),
     DragTo(Point),
     DragEnd,
+    ResetZoom,
+    ToggleCoordinates(bool),
 }
 
 impl Default for MapView {
@@ -29,6 +34,7 @@ impl Default for MapView {
             zoom_level: 1.0,
             offset: Point::new(0.0, 0.0),
             drag_start: None,
+            show_coordinates: false,
         }
     }
 }
@@ -36,6 +42,15 @@ impl Default for MapView {
 impl MapView {
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    pub fn reset_zoom(&mut self) {
+        let default = Self::default();
+        *self = Self {
+            zoom_level: default.zoom_level,
+            offset: default.offset,
+            ..*self
+        };
     }
 
     pub fn update(&mut self, message: MapMessage) {
@@ -56,6 +71,12 @@ impl MapView {
             MapMessage::DragEnd => {
                 self.drag_start = None;
             }
+            MapMessage::ResetZoom => {
+                self.reset_zoom();
+            }
+            MapMessage::ToggleCoordinates(show) => {
+                self.show_coordinates = show;
+            }
         }
     }
 
@@ -75,6 +96,7 @@ impl MapView {
             max_tile_size: self.max_tile_size,
             zoom_level: self.zoom_level,
             offset: self.offset,
+            show_coordinates: self.show_coordinates,
         })
             .width(Length::Fill)
             .height(Length::Fill);
@@ -85,7 +107,35 @@ impl MapView {
             .center_x(Length::Fill)
             .center_y(Length::Fill);
 
-        Container::new(grid_container)
+        use iced::widget::{Row, button};
+
+        let reset_button = button(Text::new("Reset Zoom"))
+            .on_press(MapMessage::ResetZoom)
+            .padding(8);
+
+        let show_coordinates_checkbox = Checkbox::new("Show Coordinates", self.show_coordinates)
+            .on_toggle(MapMessage::ToggleCoordinates);
+
+        let panel_content = scrollable(
+            Column::new()
+                .push(reset_button)
+                .push(show_coordinates_checkbox)
+                .spacing(10)
+                .padding(20)
+                .align_x(alignment::Horizontal::Center),
+        );
+
+        let right_panel = Container::new(panel_content)
+            .width(Length::Fixed(200.0))
+            .height(Length::Fill);
+
+        let content = Row::new()
+            .push(grid_container)
+            .push(right_panel)
+            .width(Length::Fill)
+            .height(Length::Fill);
+
+        Container::new(content)
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
@@ -98,6 +148,7 @@ struct GridCanvas<'a> {
     max_tile_size: f32,
     zoom_level: f32,
     offset: Point,
+    show_coordinates: bool,
 }
 
 impl<'a> GridCanvas<'a> {
@@ -152,7 +203,6 @@ impl<'a> GridCanvas<'a> {
 
         let grid_color = Color::from_rgb(0.5, 0.5, 0.6);
 
-        // Lignes horizontales
         for y in 0..=height {
             let y_pos = offset_y + y as f32 * tile_size;
 
@@ -169,7 +219,6 @@ impl<'a> GridCanvas<'a> {
             }
         }
 
-        // Lignes verticales
         for x in 0..=width {
             let x_pos = offset_x + x as f32 * tile_size;
 
@@ -186,13 +235,12 @@ impl<'a> GridCanvas<'a> {
             }
         }
 
-        if tile_size >= 20.0 {
+        if tile_size >= 20.0 && self.show_coordinates {
             for y in 0..height {
                 for x in 0..width {
                     let x_pos = offset_x + x as f32 * tile_size;
                     let y_pos = offset_y + y as f32 * tile_size;
 
-                    // Ne dessiner que pour les cellules visibles
                     if x_pos + tile_size >= 0.0
                         && x_pos <= bounds.width
                         && y_pos + tile_size >= 0.0
@@ -203,7 +251,6 @@ impl<'a> GridCanvas<'a> {
 
                         let text = format!("{},{}", x, y);
 
-                        // Utiliser le texte avec alignement horizontal et vertical
                         frame.fill_text(canvas::Text {
                             content: text,
                             position: Point::new(center_x, center_y),
@@ -229,9 +276,17 @@ impl<'a> canvas::Program<MapMessage> for GridCanvas<'a> {
         &self,
         _state: &mut Self::State,
         event: canvas::Event,
-        _bounds: Rectangle,
+        bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> (canvas::event::Status, Option<MapMessage>) {
+        let is_over_canvas = cursor
+            .position()
+            .map_or(false, |position| bounds.contains(position));
+
+        if !is_over_canvas {
+            return (canvas::event::Status::Ignored, None);
+        }
+
         match event {
             canvas::Event::Mouse(mouse_event) => match mouse_event {
                 mouse::Event::WheelScrolled { delta } => {
