@@ -96,8 +96,6 @@ impl ZappyGui {
                         let _ = network_sender.try_send(NetworkInput::Disconnect);
                     }
                     self.active_connection = None;
-                    self.map_view.reset();
-                    self.game_state.reset();
                     self.navbar.update(navbar_message);
                     self.footer.update(FooterMessage::ConnectionStatusChanged(
                         footer::ConnectionStatus::Disconnected,
@@ -131,8 +129,8 @@ impl ZappyGui {
                 NetworkOutput::Disconnected => {
                     warn!("Network is disconnected, connection closed");
                     self.active_connection = None;
-                    self.map_view.reset();
-                    self.game_state.reset();
+                    self.game_state = game::GameState::default();
+                    self.map_view = views::MapView::default();
                     self.footer.update(FooterMessage::ConnectionStatusChanged(
                         footer::ConnectionStatus::Disconnected,
                     ));

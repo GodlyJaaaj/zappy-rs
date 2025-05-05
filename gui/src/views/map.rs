@@ -40,10 +40,6 @@ impl Default for MapView {
 }
 
 impl MapView {
-    pub fn reset(&mut self) {
-        *self = Self::default();
-    }
-
     pub fn reset_zoom(&mut self) {
         let default = Self::default();
         *self = Self {
