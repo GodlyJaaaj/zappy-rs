@@ -3,9 +3,11 @@ use futures::{SinkExt, Stream, StreamExt};
 use iced_futures::stream;
 use log::{error, info, warn};
 use std::net::SocketAddrV4;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::select;
+use tokio::time::timeout;
 
 #[derive(Clone, Debug)]
 pub enum NetworkOutput {
@@ -25,8 +27,8 @@ pub enum GuiToServerMessage {}
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
-    MapSize { _width: u32, _height: u32 },
-    TeamName { _name: String },
+    MapSize { width: u32, height: u32 },
+    TeamName { name: String },
     Other(()), // For any other messages
 }
 
@@ -42,8 +44,8 @@ fn parse_server_message(msg: &str) -> Option<ServerMessage> {
                 if let (Ok(width), Ok(height)) = (parts[1].parse::<u32>(), parts[2].parse::<u32>())
                 {
                     return Some(ServerMessage::MapSize {
-                        _width: width,
-                        _height: height,
+                        width: width,
+                        height: height,
                     });
                 }
             }
@@ -51,7 +53,7 @@ fn parse_server_message(msg: &str) -> Option<ServerMessage> {
         "tna" => {
             if parts.len() >= 2 {
                 return Some(ServerMessage::TeamName {
-                    _name: parts[1].to_string(),
+                    name: parts[1].to_string(),
                 });
             }
         }
@@ -66,10 +68,13 @@ async fn handle_connection(
     cmd_sender: mpsc::Sender<GuiToServerMessage>,
     mut cmd_receiver: mpsc::Receiver<GuiToServerMessage>,
 ) {
-    match TcpStream::connect(addr).await {
-        Ok(mut s) => {
+    let timeout_duration = Duration::from_secs(5);
+
+    match timeout(timeout_duration, TcpStream::connect(addr)).await {
+        Ok(Ok(mut s)) => {
             let _ = s.write_all(b"GRAPHIC\n").await;
             let _ = output_clone.try_send(NetworkOutput::Connected(addr, cmd_sender));
+            tokio::time::sleep(Duration::from_millis(500)).await;
             let _ = s.write_all(b"msz\n").await;
             let _ = s.write_all(b"tna\n").await;
 
@@ -111,8 +116,8 @@ async fn handle_connection(
                 }
             }
         }
-        Err(e) => {
-            warn!("Failed to connect to server : {}", e);
+        Err(_) | Ok(Err(_)) => {
+            warn!("Failed to connect to server");
             let _ = output_clone.try_send(NetworkOutput::ConnectionFailed(
                 addr,
                 "Cannot connect to server.".to_string(),
