@@ -34,7 +34,7 @@ pub fn main() -> iced::Result {
     .window(Settings::from(windows_settings))
     .centered()
     .antialiasing(true)
-    .subscription(ZappyGui::start_network)
+    .subscription(ZappyGui::subscription)
     .run()
 }
 
@@ -118,7 +118,7 @@ impl ZappyGui {
                         footer::ConnectionStatus::Disconnected,
                     ));
                     self.navbar
-                        .set_connection_state(navbar::ConnectionState::Disconnected);
+                        .set_connection_state(ConnectionState::Disconnected);
                 }
                 NetworkOutput::Connected(addr, cmd_sender) => {
                     info!("Network is connected to {}", addr);
@@ -126,8 +126,7 @@ impl ZappyGui {
                     self.footer.update(FooterMessage::ConnectionStatusChanged(
                         footer::ConnectionStatus::Connected(addr),
                     ));
-                    self.navbar
-                        .set_connection_state(navbar::ConnectionState::Connected);
+                    self.navbar.set_connection_state(ConnectionState::Connected);
                 }
                 NetworkOutput::Disconnected => {
                     warn!("Network is disconnected, connection closed");
@@ -138,7 +137,7 @@ impl ZappyGui {
                         footer::ConnectionStatus::Disconnected,
                     ));
                     self.navbar
-                        .set_connection_state(navbar::ConnectionState::Disconnected);
+                        .set_connection_state(ConnectionState::Disconnected);
                 }
                 NetworkOutput::ConnectionFailed(addr, error) => {
                     error!("Network failed to connect to {}", addr);
@@ -146,17 +145,17 @@ impl ZappyGui {
                         footer::ConnectionStatus::ConnectionFailed(error),
                     ));
                     self.navbar
-                        .set_connection_state(navbar::ConnectionState::Disconnected);
+                        .set_connection_state(ConnectionState::Disconnected);
                 }
                 NetworkOutput::ServerMessage(server_msg) => {
                     match server_msg {
-                        ServerMessage::MapSize { _width, _height } => {
+                        ServerMessage::MapSize {
+                            width: _width,
+                            height: _height,
+                        } => {
                             self.game_state.update_map_size(_width, _height);
                         }
-                        ServerMessage::TeamName { _name } => {
-                            // Add team to your view
-                            //self.teams.push(_name);
-                        }
+                        ServerMessage::TeamName { name } => self.game_state.add_team(name),
                         ServerMessage::Other(_) => {
                             // Handle other messages if needed
                         }
@@ -175,8 +174,10 @@ impl ZappyGui {
         }
     }
 
-    fn start_network(&self) -> Subscription<Message> {
-        Subscription::run(network_worker).map(Message::Network)
+    fn subscription(&self) -> Subscription<Message> {
+        Subscription::batch(vec![
+            Subscription::run(network_worker).map(Message::Network),
+        ])
     }
 
     pub fn view(&self) -> Element<Message> {
@@ -195,13 +196,13 @@ impl ZappyGui {
                 .style(bordered_box)
         };
 
-        let footer = self.footer.view().map(Message::Footer);
+        let footer = self.footer.view(&self.game_state).map(Message::Footer);
 
         column![
             navbar,
             content.width(Length::Fill).height(Length::Fill),
             footer
         ]
-            .into()
+        .into()
     }
 }

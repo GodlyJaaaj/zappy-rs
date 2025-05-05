@@ -1,5 +1,8 @@
+use crate::game::GameState;
 use iced::alignment::Vertical;
-use iced::widget::{container, row, text};
+use iced::widget::scrollable::{Direction, Scrollbar};
+use iced::widget::text::danger;
+use iced::widget::{Scrollable, container, row, text};
 use iced::{Element, Length, Padding, Pixels};
 use std::net::SocketAddrV4;
 
@@ -36,27 +39,50 @@ impl Footer {
         }
     }
 
-    pub fn view(&self) -> Element<FooterMessage> {
+    pub fn view<'a>(&self, game_state: &'a GameState) -> Element<'a, FooterMessage> {
         let status_text = match &self.connection_status {
-            Some(ConnectionStatus::Connected(addr)) => text(format!("Connected to {}", addr))
-                .style(text::success)
-                .width(Length::Fill),
-            Some(ConnectionStatus::Disconnected) => text("Disconnected")
-                .style(text::secondary)
-                .width(Length::Fill),
-            Some(ConnectionStatus::ConnectionFailed(error)) => {
-                text(format!("Connection failed: {}", error))
-                    .style(text::danger)
-                    .width(Length::Fill)
+            Some(ConnectionStatus::Connected(addr)) => {
+                text(format!("Connected to {}", addr)).style(text::success)
             }
-            None => text("Waiting...").width(Length::Fill),
+            Some(ConnectionStatus::Disconnected) => text("Disconnected").style(text::secondary),
+            Some(ConnectionStatus::ConnectionFailed(error)) => {
+                text(format!("Connection failed: {}", error)).style(text::danger)
+            }
+            None => text("Waiting..."),
+        }
+        .width(Length::Shrink);
+
+        let team_display = if game_state.teams.is_empty() {
+            row![text("No teams").style(danger)]
+        } else {
+            let team_texts = game_state
+                .teams
+                .iter()
+                .map(|(name, color)| text(name).color(*color).into());
+
+            row(team_texts).spacing(10)
         };
 
         container(
-            row![status_text]
-                .spacing(Pixels::from(10))
-                .padding(Padding::from([0, 10]))
-                .align_y(Vertical::Center),
+            row![
+                status_text,
+                container(Scrollable::with_direction(
+                    team_display,
+                    Direction::Horizontal(
+                        Scrollbar::default()
+                            .scroller_width(0)
+                            .margin(0)
+                            .spacing(0)
+                            .width(0)
+                    )
+                ))
+                .align_x(iced::alignment::Horizontal::Right)
+                .width(Length::Fill)
+            ]
+            .spacing(Pixels::from(10))
+            .padding(Padding::from([0, 10]))
+            .align_y(Vertical::Center)
+            .width(Length::Fill),
         )
         .center(Length::Fill)
         .height(40)

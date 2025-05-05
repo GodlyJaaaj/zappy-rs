@@ -98,8 +98,8 @@ impl MapView {
             offset: self.offset,
             show_coordinates: self.show_coordinates,
         })
-            .width(Length::Fill)
-            .height(Length::Fill);
+        .width(Length::Fill)
+        .height(Length::Fill);
 
         let grid_container = Container::new(grid)
             .width(Length::Fill)

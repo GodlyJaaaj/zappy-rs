@@ -30,7 +30,7 @@ impl Default for Navbar {
     fn default() -> Self {
         Self {
             active_tab: Tab::default(),
-            ip: String::from("192.168.1.161"),
+            ip: String::from("127.0.0.1"),
             port: String::from("4242"),
             connection_state: ConnectionState::Disconnected,
         }
