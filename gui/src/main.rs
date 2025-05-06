@@ -23,7 +23,7 @@ pub fn main() -> iced::Result {
     env_logger::Builder::from_env(Env::default().default_filter_or("gui=trace")).init();
 
     let mut windows_settings = Settings::default();
-    windows_settings.min_size = Some(Size::new(600.0, 600.0));
+    windows_settings.min_size = Some(Size::new(800.0, 600.0));
     windows_settings.size = Size::new(800.0, 600.0);
 
     iced::application(
