@@ -1,6 +1,6 @@
-use crate::game::GameState;
+use crate::game::{GameState, Orientation};
 use alignment::Vertical;
-use iced::widget::canvas::Cache;
+use iced::widget::canvas::{Cache, Path, Stroke};
 use iced::widget::{Checkbox, Column, Container, Stack, Text, canvas, scrollable};
 use iced::{Color, Element, Length, Padding, Pixels, Point, Rectangle, Vector, alignment};
 use iced::{Size, mouse};
@@ -187,6 +187,75 @@ struct GridCanvas<'a> {
 }
 
 impl<'a> GridCanvas<'a> {
+    fn draw_players_geometry(&self, renderer: &iced::Renderer, bounds: Rectangle, tile_size: f32) -> canvas::Geometry {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+
+        let (width, height) = match (self.game_state.width(), self.game_state.height()) {
+            (Some(w), Some(h)) => (w, h),
+            _ => return frame.into_geometry(),
+        };
+
+        let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
+
+        let player_size_ratio = 0.7; // 70% de la taille de la tuile
+        for player in self.game_state.players().values() {
+            let (_, team_color) = self.game_state.get_team_for_player(&player);
+            let (x, y) = player.position;
+            let pos_x = center.x + (x as f32 - width as f32 / 2.0) * tile_size + self.offset.x;
+            let pos_y = center.y - (y as f32 - height as f32 / 2.0) * tile_size + self.offset.y;
+
+            let player_size = tile_size * player_size_ratio;
+            let player_circle = Path::circle(
+                Point::new(pos_x + tile_size / 2.0, pos_y + tile_size / 2.0),
+                player_size / 2.0,
+            );
+
+            frame.fill(&player_circle, team_color.clone());
+
+            frame.stroke(
+                &player_circle,
+                Stroke::default()
+                    .with_color(Color {
+                        r: team_color.r * 0.7,
+                        g: team_color.g * 0.7,
+                        b: team_color.b * 0.7,
+                        a: 1.0,
+                    })
+                    .with_width(2.0),
+            );
+
+            let angle: f32 = match player.orientation {
+                Orientation::North => 270.0,
+                Orientation::East => 0.0,
+                Orientation::South => 90.0,
+                Orientation::West => 180.0,
+            };
+
+            let center_x = pos_x + tile_size / 2.0;
+            let center_y = pos_y + tile_size / 2.0;
+
+            let arrow_start = Point::new(center_x, center_y);
+
+            let arrow_length = player_size / 2.0;
+            let rad_angle = angle.to_radians();
+            let arrow_end = Point::new(
+                center_x + arrow_length * rad_angle.cos(),
+                center_y + arrow_length * rad_angle.sin(),
+            );
+
+            // Dessiner la tige de la flèche
+            let arrow_path = Path::line(arrow_start, arrow_end);
+            frame.stroke(
+                &arrow_path,
+                Stroke::default()
+                    .with_color(Color::BLACK)
+                    .with_width(2.0),
+            );
+        }
+        
+        frame.into_geometry()
+    }
+
     fn draw_grid(&self, frame: &mut canvas::Frame, bounds: Rectangle, tile_size: f32) {
         let width = self.game_state.width().unwrap();
         let height = self.game_state.height().unwrap();
@@ -199,7 +268,7 @@ impl<'a> GridCanvas<'a> {
 
         // Remplissage de l'arrière-plan
         frame.fill(
-            &canvas::Path::rectangle(Point::new(0.0, 0.0), Size::new(bounds.width, bounds.height)),
+            &Path::rectangle(Point::new(0.0, 0.0), Size::new(bounds.width, bounds.height)),
             Color::from_rgb(0.9, 0.9, 0.9),
         );
 
@@ -207,7 +276,7 @@ impl<'a> GridCanvas<'a> {
         for y in 0..height {
             for x in 0..width {
                 let x_pos = offset_x + x as f32 * tile_size;
-                let y_pos = offset_y + y as f32 * tile_size;
+                let y_pos = offset_y + (height - 1 - y) as f32 * tile_size;
 
                 if x_pos + tile_size >= 0.0
                     && x_pos <= bounds.width
@@ -239,11 +308,11 @@ impl<'a> GridCanvas<'a> {
 
             if y_pos >= 0.0 && y_pos <= bounds.height {
                 frame.stroke(
-                    &canvas::Path::line(
+                    &Path::line(
                         Point::new(offset_x.max(0.0), y_pos),
                         Point::new((offset_x + grid_width).min(bounds.width), y_pos),
                     ),
-                    canvas::Stroke::default()
+                    Stroke::default()
                         .with_color(grid_color)
                         .with_width(1.0),
                 );
@@ -255,11 +324,11 @@ impl<'a> GridCanvas<'a> {
 
             if x_pos >= 0.0 && x_pos <= bounds.width {
                 frame.stroke(
-                    &canvas::Path::line(
+                    &Path::line(
                         Point::new(x_pos, offset_y.max(0.0)),
                         Point::new(x_pos, (offset_y + grid_height).min(bounds.height)),
                     ),
-                    canvas::Stroke::default()
+                    Stroke::default()
                         .with_color(grid_color)
                         .with_width(1.0),
                 );
@@ -271,7 +340,7 @@ impl<'a> GridCanvas<'a> {
             for y in 0..height {
                 for x in 0..width {
                     let x_pos = offset_x + x as f32 * tile_size;
-                    let y_pos = offset_y + y as f32 * tile_size;
+                    let y_pos = offset_y + (height - 1 - y) as f32 * tile_size;
 
                     if x_pos + tile_size >= 0.0
                         && x_pos <= bounds.width
@@ -373,17 +442,20 @@ impl<'a> canvas::Program<MapMessage> for GridCanvas<'a> {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
+        let tile_size = self.zoom_level
+            * self.min_tile_size.max(
+            (bounds.width.min(bounds.height)
+                / self.game_state.width().max(Some(1)).unwrap() as f32)
+                .min(self.max_tile_size),
+        );
+
         let geometry = self.cache.draw(renderer, bounds.size(), |frame| {
-            let tile_size = self.zoom_level
-                * self.min_tile_size.max(
-                    (bounds.width.min(bounds.height)
-                        / self.game_state.width().max(Some(1)).unwrap() as f32)
-                        .min(self.max_tile_size),
-                );
             self.draw_grid(frame, bounds, tile_size);
         });
 
-        vec![geometry]
+        let players_geo = self.draw_players_geometry(renderer, bounds, tile_size);
+
+        vec![geometry, players_geo]
     }
 
     fn mouse_interaction(
