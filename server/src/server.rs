@@ -747,7 +747,36 @@ impl Server {
                         .build()
                         .unwrap();
                     new_gui.send_to_client(ServerResponse::Pending(LogAs(TeamType::Graphic)));
+
+                    //map size
+                    new_gui.send_to_client(ServerResponse::Gui(GUIResponse::Msz(self.map.size())));
+
+                    //teams names
+                    let teams_names = self
+                        .teams
+                        .iter()
+                        .map(|(.., team_name)| team_name.name().to_string())
+                        .collect::<Vec<_>>();
+                    new_gui.send_to_client(ServerResponse::Gui(GUIResponse::Tna(teams_names)));
+
+                    //players
+                    for player in self.clients.values() {
+                        info!("player: {:?}", player);
+                        new_gui.send_to_client(ServerResponse::Gui(GUIResponse::Pnw(
+                            player.id(),
+                            player.position(),
+                            player.direction(),
+                            player.level(),
+                            self.teams
+                                .iter()
+                                .find(|(_, team)| team.id() == player.team_id())
+                                .map(|(_, team)| team.name().to_string())
+                                .unwrap_or_default(),
+                        )));
+                    }
+
                     self.guis.insert(id, new_gui);
+
                     return;
                 }
 
