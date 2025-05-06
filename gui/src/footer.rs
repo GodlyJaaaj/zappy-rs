@@ -2,7 +2,7 @@ use crate::game::GameState;
 use iced::alignment::Vertical;
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::danger;
-use iced::widget::{Scrollable, container, row, text};
+use iced::widget::{container, row, text, Scrollable};
 use iced::{Element, Length, Padding, Pixels};
 use std::net::SocketAddrV4;
 
@@ -58,7 +58,11 @@ impl Footer {
             let team_texts = game_state
                 .teams()
                 .iter()
-                .map(|(name, color)| text(name).color(*color).into());
+                .map(|(name, color)| {
+                    let mut color_a_max = color.clone();
+                    color_a_max.a = 1.0;
+                    text(name).color(color_a_max).into()
+                });
 
             row(team_texts).spacing(10)
         };

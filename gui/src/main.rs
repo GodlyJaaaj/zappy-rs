@@ -5,6 +5,7 @@ mod network;
 mod views;
 
 use crate::footer::{Footer, FooterMessage};
+use crate::game::Orientation;
 use crate::navbar::{ConnectionState, Navbar, NavbarMessage};
 use crate::network::{
     GuiToServerMessage, NetworkInput, NetworkOutput, ServerMessage, network_worker,
@@ -146,20 +147,47 @@ impl ZappyGui {
                     self.navbar
                         .set_connection_state(ConnectionState::Disconnected);
                 }
-                NetworkOutput::ServerMessage(server_msg) => {
-                    match server_msg {
-                        ServerMessage::MapSize {
-                            width: _width,
-                            height: _height,
-                        } => {
-                            self.game_state.update_map_size(_width, _height);
-                        }
-                        ServerMessage::TeamName { name } => self.game_state.add_team(name),
-                        ServerMessage::Other(_) => {
-                            // Handle other messages if needed
-                        }
+                NetworkOutput::ServerMessage(server_msg) => match server_msg {
+                    ServerMessage::MapSize {
+                        width: _width,
+                        height: _height,
+                    } => {
+                        self.game_state.update_map_size(_width, _height);
                     }
-                }
+                    ServerMessage::TeamName { name } => self.game_state.add_team(name),
+                    ServerMessage::Other(_) => {
+                        // Handle other messages if needed
+                    }
+                    ServerMessage::PlayerConnected {
+                        id,
+                        pos: position,
+                        orientation,
+                        level,
+                        team_name,
+                    } => {
+                        self.game_state.add_player(
+                            id,
+                            self.game_state
+                                .teams()
+                                .iter()
+                                .position(|(name, _)| name == &team_name)
+                                .unwrap(),
+                            position,
+                            Orientation::try_from(orientation).unwrap(),
+                            level,
+                        );
+                    }
+                    ServerMessage::PlayerPosition { id, pos, orientation } => {
+                        let player = self.game_state.players_mut().get_mut(&id).unwrap();
+                        player.position = pos;
+                        player.orientation = Orientation::try_from(orientation).unwrap();
+                    }
+                    | ServerMessage::PlayerLevel { .. }
+                    | ServerMessage::PlayerInventory { .. } => todo!(),
+                    ServerMessage::PlayerDied { id } => {
+                        self.game_state.remove_player(id);
+                    }
+                },
             },
             Message::Map(map_message) => {
                 self.map_view.update(map_message);
