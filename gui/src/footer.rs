@@ -52,11 +52,11 @@ impl Footer {
         }
         .width(Length::Shrink);
 
-        let team_display = if game_state.teams.is_empty() {
+        let team_display = if game_state.teams().is_empty() {
             row![text("No teams").style(danger)]
         } else {
             let team_texts = game_state
-                .teams
+                .teams()
                 .iter()
                 .map(|(name, color)| text(name).color(*color).into());
 

@@ -1,9 +1,9 @@
 use crate::game::GameState;
 use alignment::Vertical;
 use iced::widget::canvas::Cache;
-use iced::widget::{canvas, scrollable, Checkbox, Column, Container, Stack, Text};
-use iced::{alignment, Color, Element, Length, Padding, Pixels, Point, Rectangle, Vector};
-use iced::{mouse, Size};
+use iced::widget::{Checkbox, Column, Container, Stack, Text, canvas, scrollable};
+use iced::{Color, Element, Length, Padding, Pixels, Point, Rectangle, Vector, alignment};
+use iced::{Size, mouse};
 use iced_futures::core::alignment::Horizontal;
 use std::rc::Rc;
 
@@ -92,7 +92,7 @@ impl MapView {
     }
 
     pub fn view<'a>(&self, game_state: &'a GameState) -> Element<'a, MapMessage> {
-        if game_state.map_width.is_none() || game_state.map_height.is_none() {
+        if game_state.width().is_none() || game_state.width().is_none() {
             return Container::new(Text::new("En attente des dimensions de la map..."))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -119,7 +119,7 @@ impl MapView {
             .center_x(Length::Fill)
             .center_y(Length::Fill);
 
-        use iced::widget::{button, Row};
+        use iced::widget::{Row, button};
 
         let reset_button = button(Text::new("Reset Zoom").size(14.0))
             .on_press(MapMessage::ResetZoom)
@@ -188,8 +188,8 @@ struct GridCanvas<'a> {
 
 impl<'a> GridCanvas<'a> {
     fn draw_grid(&self, frame: &mut canvas::Frame, bounds: Rectangle, tile_size: f32) {
-        let width = self.game_state.map_width.unwrap();
-        let height = self.game_state.map_height.unwrap();
+        let width = self.game_state.width().unwrap();
+        let height = self.game_state.height().unwrap();
 
         let grid_width = width as f32 * tile_size;
         let grid_height = height as f32 * tile_size;
@@ -377,7 +377,7 @@ impl<'a> canvas::Program<MapMessage> for GridCanvas<'a> {
             let tile_size = self.zoom_level
                 * self.min_tile_size.max(
                     (bounds.width.min(bounds.height)
-                        / self.game_state.map_width.max(Some(1)).unwrap() as f32)
+                        / self.game_state.width().max(Some(1)).unwrap() as f32)
                         .min(self.max_tile_size),
                 );
             self.draw_grid(frame, bounds, tile_size);
