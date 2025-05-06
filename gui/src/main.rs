@@ -34,6 +34,7 @@ pub fn main() -> iced::Result {
     .window(Settings::from(windows_settings))
     .centered()
     .antialiasing(true)
+    .default_font(iced::Font::MONOSPACE)
     .subscription(ZappyGui::subscription)
     .run()
 }

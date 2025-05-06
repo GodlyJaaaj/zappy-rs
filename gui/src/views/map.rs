@@ -1,13 +1,11 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::game::GameState;
 use alignment::Vertical;
 use iced::widget::canvas::Cache;
-use iced::widget::{canvas, scrollable, Checkbox, Column, Container, Text};
-use iced::{alignment, Color, Element, Length, Pixels, Point, Rectangle, Vector};
+use iced::widget::{canvas, scrollable, Checkbox, Column, Container, Stack, Text};
+use iced::{alignment, Color, Element, Length, Padding, Pixels, Point, Rectangle, Vector};
 use iced::{mouse, Size};
 use iced_futures::core::alignment::Horizontal;
-use log::info;
+use std::rc::Rc;
 
 pub struct MapView {
     min_tile_size: f32,
@@ -24,6 +22,8 @@ pub struct MapView {
 #[derive(Debug, Clone)]
 pub enum MapMessage {
     Zoom(f32),
+    ZoomIn,
+    ZoomOut,
     DragStart(Point),
     DragTo(Point),
     DragEnd,
@@ -48,8 +48,8 @@ impl Default for MapView {
 impl MapView {
     pub fn reset_zoom(&mut self) {
         let default = Self::default();
-            self.zoom_level = default.zoom_level;
-            self.offset = default.offset;
+        self.zoom_level = default.zoom_level;
+        self.offset = default.offset;
     }
 
     pub fn update(&mut self, message: MapMessage) {
@@ -57,6 +57,15 @@ impl MapView {
             MapMessage::Zoom(delta) => {
                 self.zoom_level = (self.zoom_level * delta).max(0.1).min(5.0);
             }
+            MapMessage::ZoomIn => {
+                self.cache.clear();
+                self.zoom_level = (self.zoom_level * 1.1).min(5.0);
+            }
+            MapMessage::ZoomOut => {
+                self.cache.clear();
+                self.zoom_level = (self.zoom_level * 0.9).max(0.1);
+            }
+
             MapMessage::DragStart(position) => {
                 self.drag_start = Some(position);
             }
@@ -112,12 +121,23 @@ impl MapView {
 
         use iced::widget::{button, Row};
 
-        let reset_button = button(Text::new("Reset Zoom"))
+        let reset_button = button(Text::new("Reset Zoom").size(14.0))
             .on_press(MapMessage::ResetZoom)
-            .padding(8);
+            .padding(
+                Padding::default()
+                    .left(35.0)
+                    .right(35.0)
+                    .top(5.0)
+                    .bottom(5.0),
+            );
+
+        let zoom_in_button = button(Text::new("+")).on_press(MapMessage::ZoomIn);
+
+        let zoom_out_button = button(Text::new("-")).on_press(MapMessage::ZoomOut);
 
         let show_coordinates_checkbox = Checkbox::new("Show Coordinates", self.show_coordinates)
-            .on_toggle(MapMessage::ToggleCoordinates);
+            .on_toggle(MapMessage::ToggleCoordinates)
+            .text_size(14.0);
 
         let panel_content = scrollable(
             Column::new()
@@ -132,8 +152,19 @@ impl MapView {
             .width(Length::Fixed(200.0))
             .height(Length::Fill);
 
+        let zoom_dezoom_buttons = Row::new()
+            .push(zoom_in_button)
+            .push(zoom_out_button)
+            .spacing(10)
+            .padding(20);
+        let zoom_dezoom_buttons = Container::new(zoom_dezoom_buttons)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(Vertical::Bottom)
+            .align_x(Horizontal::Right);
+
         let content = Row::new()
-            .push(grid_container)
+            .push(Stack::new().push(grid_container).push(zoom_dezoom_buttons))
             .push(right_panel)
             .width(Length::Fill)
             .height(Length::Fill);
@@ -156,12 +187,7 @@ struct GridCanvas<'a> {
 }
 
 impl<'a> GridCanvas<'a> {
-    fn draw_grid(
-        &self,
-        frame: &mut canvas::Frame,
-        bounds: Rectangle,
-        tile_size: f32,
-    ) {
+    fn draw_grid(&self, frame: &mut canvas::Frame, bounds: Rectangle, tile_size: f32) {
         let width = self.game_state.map_width.unwrap();
         let height = self.game_state.map_height.unwrap();
 
@@ -217,7 +243,9 @@ impl<'a> GridCanvas<'a> {
                         Point::new(offset_x.max(0.0), y_pos),
                         Point::new((offset_x + grid_width).min(bounds.width), y_pos),
                     ),
-                    canvas::Stroke::default().with_color(grid_color).with_width(1.0),
+                    canvas::Stroke::default()
+                        .with_color(grid_color)
+                        .with_width(1.0),
                 );
             }
         }
@@ -231,7 +259,9 @@ impl<'a> GridCanvas<'a> {
                         Point::new(x_pos, offset_y.max(0.0)),
                         Point::new(x_pos, (offset_y + grid_height).min(bounds.height)),
                     ),
-                    canvas::Stroke::default().with_color(grid_color).with_width(1.0),
+                    canvas::Stroke::default()
+                        .with_color(grid_color)
+                        .with_width(1.0),
                 );
             }
         }
@@ -343,12 +373,13 @@ impl<'a> canvas::Program<MapMessage> for GridCanvas<'a> {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        info!("Drawing grid {:?}", bounds);
         let geometry = self.cache.draw(renderer, bounds.size(), |frame| {
-            let tile_size = self.zoom_level * self.min_tile_size.max(
-                (bounds.width.min(bounds.height) / self.game_state.map_width.max(Some(1)).unwrap() as f32)
-                    .min(self.max_tile_size),
-            );
+            let tile_size = self.zoom_level
+                * self.min_tile_size.max(
+                    (bounds.width.min(bounds.height)
+                        / self.game_state.map_width.max(Some(1)).unwrap() as f32)
+                        .min(self.max_tile_size),
+                );
             self.draw_grid(frame, bounds, tile_size);
         });
 
