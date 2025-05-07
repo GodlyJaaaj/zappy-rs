@@ -85,7 +85,7 @@ impl CommandHandler for AiHandler {
                     CommandRes::Response(format!("{}\n", InventoryFormat(&resources)))
                 }
                 AIResponse::ConnectNbr(nbr) => CommandRes::Response(format!("{}\n", nbr)),
-                AIResponse::Eject(dir) => CommandRes::Response(format!("eject {}\n", dir)),
+                AIResponse::Eject(dir) => CommandRes::Response(format!("eject: {}\n", dir)),
                 AIResponse::Incantating => CommandRes::Response("Elevation underway\n".to_string()),
                 AIResponse::LevelUp(new_level) => {
                     CommandRes::Response(format!("Current level: {}\n", LevelFormat(&new_level)))
